@@ -22,7 +22,7 @@ class LLMProvider:
         return self._client
 
     async def send_message(
-        self, message: list[dict[str, any]], stream: bool = True
+        self, message: list[dict[str, Any]], stream: bool = True
         ) -> AsyncGenerator[StreamEvent, None]:
 
         client = self.get_client()
