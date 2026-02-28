@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any
 
 
-class EventType(str,Enum):
+class StreamEventType(str,Enum):
     TEXT_DELTA = "text_delta"
     MESSAGE_COMPLETE = "message_complete"
     ERROR = "error"
@@ -36,7 +36,7 @@ class TokenUsage:
 
 @dataclass
 class StreamEvent:
-    type : EventType
+    type : StreamEventType
     text_delta: TextDelta | None = None
     error : str | None = None
     finished_reason : str | None = None

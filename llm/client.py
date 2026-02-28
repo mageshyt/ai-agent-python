@@ -1,6 +1,6 @@
 import asyncio
 import dotenv
-from lib.response import EventType, StreamEvent, TextDelta, TokenUsage
+from lib.response import StreamEventType, StreamEvent, TextDelta, TokenUsage
 from openai import AsyncOpenAI , RateLimitError, APIConnectionError
 from typing import Any, AsyncGenerator
 
@@ -43,13 +43,13 @@ class LLMProvider:
                     await asyncio.sleep(2 ** attempt)  # simple exponential backoff
                     continue
                 else:
-                    yield StreamEvent(type=EventType.ERROR, error="Rate limit exceeded. Please try again later.")
+                    yield StreamEvent(type=StreamEventType.ERROR, error="Rate limit exceeded. Please try again later.")
                     return
             except APIConnectionError as e:
-                yield StreamEvent(type=EventType.ERROR, error=f"API connection error: {str(e)}. Please check your network connection and try again.")
+                yield StreamEvent(type=StreamEventType.ERROR, error=f"API connection error: {str(e)}. Please check your network connection and try again.")
                 return
             except Exception as e:
-                yield StreamEvent(type=EventType.ERROR, error=str(e))
+                yield StreamEvent(type=StreamEventType.ERROR, error=str(e))
                 return
 
     async def _stream_response(
@@ -85,12 +85,12 @@ class LLMProvider:
                 text_delta = TextDelta(content=message.content, role=message.role)
 
                 yield StreamEvent(
-                    type=EventType.TEXT_DELTA,
+                    type=StreamEventType.TEXT_DELTA,
                     text_delta=text_delta,
                 )
 
         yield StreamEvent(
-            type=EventType.MESSAGE_COMPLETE,
+            type=StreamEventType.MESSAGE_COMPLETE,
             finished_reason=finished_reason,
             usage=usage
         )
@@ -118,7 +118,7 @@ class LLMProvider:
             )
 
         return StreamEvent(
-            type=EventType.TEXT_DELTA,
+            type=StreamEventType.TEXT_DELTA,
             text_delta=text_delta,
             finished_reason=choice.finish_reason,
             usage=usage

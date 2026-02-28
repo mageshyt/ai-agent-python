@@ -187,6 +187,9 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
     
     def agent_error(self, message: str) -> None:
         """Display agent errors"""
+        if self._live_display is not None:
+            self._live_display.stop()
+            self._live_display = None
         self.console.print(f"[error]✗ Error:[/] {message}")
     
     def text_complete(self, content: str) -> None:

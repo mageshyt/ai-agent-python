@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import AsyncGenerator
 
 from agent.events import AgentEvent, AgentEventType
-from lib.response import EventType
+from lib.response import StreamEventType
 from llm.client import LLMProvider
 
 
@@ -37,11 +37,11 @@ class Agent:
         response_text = ""
 
         async for event in self.client.send_message(message, stream=True):
-            if event.type == EventType.TEXT_DELTA:
+            if event.type == StreamEventType.TEXT_DELTA:
                 content = event.text_delta.content if event.text_delta else ""
                 response_text += content
                 yield AgentEvent.text_delta(agent_name=self.agentId, content=content)
-            elif event.type == EventType.ERROR:
+            elif event.type == StreamEventType.ERROR:
                 error_message = event.error if event.error else "Unknown error"
                 yield AgentEvent.agent_error(agent_name=self.agentId, message=error_message)
     
