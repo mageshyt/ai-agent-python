@@ -30,6 +30,7 @@ class CLI:
                     agent_name = event.data.get('agent_name', 'unknown')
                     msg = event.data.get('message', '')
                     self.tui.agent_started(agent_name, msg)
+                    self.tui.assistant_thinking("Thinking")
                     
                 case AgentEventType.TEXT_DELTA:
                     content = event.data.get("content", "")
@@ -52,3 +53,17 @@ class CLI:
         self.tui.end_assistant()
         return final_response
 
+    async def run_interactive(self):
+        self.tui.show_welcome_message()
+
+        async with Agent() as agent:
+            self.agent = agent 
+            while True:
+                user_input = console.input("[bold blue]You:[/] ")
+                if user_input.strip().lower() == "exit":
+                    console.print("[bold red]Exiting... Goodbye![/]")
+                    break
+                if user_input.strip() == '/help':
+                    self.tui.show_help()
+                
+                await self._process_message(user_input)

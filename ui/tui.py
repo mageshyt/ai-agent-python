@@ -3,6 +3,10 @@ from rich.markdown import Markdown
 from rich.theme import Theme
 from rich.rule import Rule
 from rich.text import Text
+from rich.spinner import Spinner
+from rich.live import Live
+from rich.panel import Panel
+from rich import box
 
 AGENT_THEME = Theme({
     # Agent and assistant styles
@@ -72,27 +76,108 @@ class TUI:
         self._assistant_stream_open = False
         self._buffer = "" 
         self._use_markdown = True
+        self._last_render_pos = 0 
+        self._live_display = None  
 
+    def print_welcome(self, title: str, lines: list[str]) -> None:
+        body = "\n".join(lines)
+        self.console.print(
+            Panel(
+                Markdown(body),
+                title=Text(title, style="highlight"),
+                title_align="left",
+                border_style="border",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+        )
+
+    def show_welcome_message(self) -> None:
+        owl_art = """
+  ░██████  ░██     ░██ ░████████   ░██████████ ░█████████    ░██████   ░██       ░██ ░██         
+ ░██   ░██  ░██   ░██  ░██    ░██  ░██         ░██     ░██  ░██   ░██  ░██       ░██ ░██         
+░██          ░██ ░██   ░██    ░██  ░██         ░██     ░██ ░██     ░██ ░██  ░██  ░██ ░██         
+░██           ░████    ░████████   ░█████████  ░█████████  ░██     ░██ ░██ ░████ ░██ ░██         
+░██            ░██     ░██     ░██ ░██         ░██   ░██   ░██     ░██ ░██░██ ░██░██ ░██         
+ ░██   ░██     ░██     ░██     ░██ ░██         ░██    ░██   ░██   ░██  ░████   ░████ ░██         
+  ░██████      ░██     ░█████████  ░██████████ ░██     ░██   ░██████   ░███     ░███ ░██████████ 
+                                                                                                                                  
+   AI Agent CLI
+        """
+        welcome_md = f"""
+{owl_art}
+
+# Welcome to the AI Agent CLI!
+
+Interact with your AI agent in style. Ask questions, give commands, and see responses in real-time.
+
+---
+
+## Quick Start
+- Type your message and press Enter to chat with the agent.
+- Use `/help` to see available commands.
+- Use `/exit` or `/quit` to leave the application.
+
+## Features
+- Conversational AI with Markdown and code support
+- Tool access for advanced tasks
+- Session management and checkpoints
+- Live streaming responses
+
+> *Tip: Try asking for code, explanations, or summaries!*
+"""
+        self.console.print(
+            Panel(
+                Markdown(welcome_md),
+                title=Text("🦉 AI Agent CLI", style="highlight"),
+                title_align="left",
+                border_style="border",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+        )
     def begin_assistant(self) -> None:
         self.console.print()
         self.console.print(Rule(Text("Assistant", style="assistant")))
         self._assistant_stream_open = True
         self._buffer = ""
+        self._last_render_pos = 0
 
     def end_assistant(self) -> None:
+        # Ensure thinking indicator is stopped
+        self.stop_thinking()
+        
         if self._assistant_stream_open:
             if self._use_markdown and self._buffer:
-                # Render buffered content as markdown
-                self.console.print(Markdown(self._buffer))
+                # Render any remaining buffered content
+                remaining = self._buffer[self._last_render_pos:]
+                if remaining.strip():
+                    self.console.print(Markdown(remaining))
             self.console.print()
         self._assistant_stream_open = False
         self._buffer = ""
+        self._last_render_pos = 0
 
     def stream_assistant_delta(self, content: str) -> None:
-        if self._use_markdown:
-            self._buffer += content
-        else:
-            self.console.print(content, end="", markup=True, highlight=True, emoji=True)
+        # Stop any thinking indicator when we start receiving content
+        self.stop_thinking()
+        self.console.print(content, end="", markup=True, highlight=True, emoji=True)
+    
+    def assistant_thinking(self, message: str = "Thinking") -> None:
+        """Show an animated thinking/loading indicator"""
+        if self._live_display is None:
+            spinner = Spinner("dots", text=f"[thinking]{message}...[/]", style="thinking")
+            self._live_display = Live(spinner, console=self.console, refresh_per_second=10, transient=True)
+            self._live_display.start()
+    
+    def stop_thinking(self) -> None:
+        """Stop the thinking indicator"""
+        if self._live_display is not None:
+            try:
+                self._live_display.stop()
+            except Exception:
+                pass  # Silently handle if already stopped
+            self._live_display = None
     
     def agent_started(self, agent_name: str, message: str) -> None:
         """Display when agent starts processing"""
@@ -130,30 +215,28 @@ class TUI:
 
     def show_help(self) -> None:
         help_text = """
-            ## Commands
+## Commands
 
-            - `/help` - Show this help
-            - `/exit` or `/quit` - Exit the agent
-            - `/clear` - Clear conversation history
-            - `/config` - Show current configuration
-            - `/model <name>` - Change the model
-            - `/approval <mode>` - Change approval mode
-            - `/stats` - Show session statistics
-            - `/tools` - List available tools
-            - `/mcp` - Show MCP server status
-            - `/save` - Save current session
-            - `/checkpoint [name]` - Create a checkpoint
-            - `/checkpoints` - List available checkpoints
-            - `/restore <checkpoint_id>` - Restore a checkpoint
-            - `/sessions` - List saved sessions
-            - `/resume <session_id>` - Resume a saved session
+- `/help` - Show this help
+- `/exit` or `/quit` - Exit the agent
+- `/clear` - Clear conversation history
+- `/config` - Show current configuration
+- `/model <name>` - Change the model
+- `/approval <mode>` - Change approval mode
+- `/stats` - Show session statistics
+- `/tools` - List available tools
+- `/mcp` - Show MCP server status
+- `/save` - Save current session
+- `/checkpoint [name]` - Create a checkpoint
+- `/checkpoints` - List available checkpoints
+- `/restore <checkpoint_id>` - Restore a checkpoint
+- `/sessions` - List saved sessions
+- `/resume <session_id>` - Resume a saved session
 
-            ## Tips
+## Tips
 
-            - Just type your message to chat with the agent
-            - The agent can read, write, and execute code
-            - Some operations require approval (can be configured)
-        """
+- Just type your message to chat with the agent
+- The agent can read, write, and execute code
+- Some operations require approval (can be configured)
+"""
         self.console.print(Markdown(help_text))
-
-
