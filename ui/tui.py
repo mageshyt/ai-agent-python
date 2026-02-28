@@ -142,26 +142,34 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
         self._assistant_stream_open = True
         self._buffer = ""
         self._last_render_pos = 0
+        # Live display is started lazily on first token in stream_assistant_delta
 
     def end_assistant(self) -> None:
-        # Ensure thinking indicator is stopped
-        self.stop_thinking()
-        
-        if self._assistant_stream_open:
-            if self._use_markdown and self._buffer:
-                # Render any remaining buffered content
-                remaining = self._buffer[self._last_render_pos:]
-                if remaining.strip():
-                    self.console.print(Markdown(remaining))
-            self.console.print()
+        if self._live_display is not None:
+            try:
+                self._live_display.stop()
+            except Exception:
+                pass
+            self._live_display = None
+        self.console.print()
         self._assistant_stream_open = False
         self._buffer = ""
         self._last_render_pos = 0
 
     def stream_assistant_delta(self, content: str) -> None:
-        # Stop any thinking indicator when we start receiving content
-        self.stop_thinking()
-        self.console.print(content, end="", markup=True, highlight=True, emoji=True)
+        self._buffer += content
+        if self._live_display is None:
+            self.stop_thinking()
+            self._live_display = Live(
+                Markdown(self._buffer),
+                console=self.console,
+                refresh_per_second=15,
+                transient=False,
+                vertical_overflow="visible",
+            )
+            self._live_display.start()
+        else:
+            self._live_display.update(Markdown(self._buffer))
     
     def assistant_thinking(self, message: str = "Thinking") -> None:
         """Show an animated thinking/loading indicator"""
@@ -176,7 +184,7 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
             try:
                 self._live_display.stop()
             except Exception:
-                pass  # Silently handle if already stopped
+                pass 
             self._live_display = None
     
     def agent_started(self, agent_name: str, message: str) -> None:
