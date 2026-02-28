@@ -9,7 +9,7 @@ from llm.client import LLMProvider
 class Agent:
     def __init__(self ):
         self.client = LLMProvider()
-        self.agentId : str = "example_agent"
+        self.agentId : str = "ask_agent"
     
     async def run(self,mesage:str)->AsyncGenerator[AgentEvent, None]:
         yield AgentEvent.agent_started(agent_name=self.agentId , message=mesage)
@@ -40,17 +40,17 @@ class Agent:
             if event.type == EventType.TEXT_DELTA:
                 content = event.text_delta.content if event.text_delta else ""
                 response_text += content
-                yield AgentEvent.text_delta(agent_name="example_agent", content=content)
+                yield AgentEvent.text_delta(agent_name=self.agentId, content=content)
             elif event.type == EventType.ERROR:
                 error_message = event.error if event.error else "Unknown error"
-                yield AgentEvent.agent_error(agent_name="example_agent", message=error_message)
+                yield AgentEvent.agent_error(agent_name=self.agentId, message=error_message)
     
         if response_text:
             yield AgentEvent.text_complete(agent_name=self.agentId, content=response_text)
     
     async def _check_for_agent(self) :
         if not self.agentId:
-            yield AgentEvent.agent_error(agent_name="example_agent", message="Agent ID is not set. Please set the agent ID before running the agent.")
+            yield AgentEvent.agent_error(agent_name=self.agentId, message="Agent ID is not set. Please set the agent ID before running the agent.")
         
     async def __aenter__(self) -> Agent:
         return self

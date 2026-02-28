@@ -39,19 +39,16 @@ class LLMProvider:
                 return
             except RateLimitError as e:
                 if attempt < self.max_retries:
-                    print(f"Rate limit error encountered. Retrying... (Attempt {attempt + 1}/{self.max_retries})")
                     # backoff strategy: wait for a short period before retrying, you can implement exponential backoff if desired
                     await asyncio.sleep(2 ** attempt)  # simple exponential backoff
                     continue
                 else:
-                    print("Maximum retry attempts reached. Raising the error.")
                     yield StreamEvent(type=EventType.ERROR, error="Rate limit exceeded. Please try again later.")
                     return
             except APIConnectionError as e:
                 yield StreamEvent(type=EventType.ERROR, error=f"API connection error: {str(e)}. Please check your network connection and try again.")
                 return
             except Exception as e:
-                print(f"An error occurred: {e}")
                 yield StreamEvent(type=EventType.ERROR, error=str(e))
                 return
 
