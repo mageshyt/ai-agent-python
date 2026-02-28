@@ -1,6 +1,7 @@
 from agent.agent import Agent
 from agent.events import AgentEventType
 from ui.tui import TUI, get_console
+from rich.panel import Panel
 
 console = get_console()
 
@@ -59,11 +60,11 @@ class CLI:
         async with Agent() as agent:
             self.agent = agent 
             while True:
-                user_input = console.input("[bold blue]You:[/] ")
+                user_input = console.input(">>> ")
                 if user_input.strip().lower() == "exit":
                     console.print("[bold red]Exiting... Goodbye![/]")
                     break
-                if user_input.strip() == '/help':
+                elif user_input.strip() == '/help':
                     self.tui.show_help()
-                
-                await self._process_message(user_input)
+                else:
+                    await self._process_message(user_input)
