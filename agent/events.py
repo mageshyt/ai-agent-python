@@ -39,6 +39,7 @@ class AgentEvent:
                        response:str | None = None,
                        usage:TokenUsage | None = None
             ) -> AgentEvent:
+        
         return cls(
             type=AgentEventType.AGENT_FINISHED,
             data={"agent_name": agent_name , 
