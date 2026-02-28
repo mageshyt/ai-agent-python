@@ -142,59 +142,48 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
         self._assistant_stream_open = True
         self._buffer = ""
         self._last_render_pos = 0
-        # Live display is started lazily on first token in stream_assistant_delta
+        self._live_display = Live(
+            Spinner("dots", text="[thinking]Thinking...[/]", style="thinking"),
+            console=self.console,
+            refresh_per_second=15,
+            vertical_overflow="visible",
+        )
+        self._live_display.start()
 
     def end_assistant(self) -> None:
         if self._live_display is not None:
-            try:
-                self._live_display.stop()
-            except Exception:
-                pass
+            self._live_display.stop()
             self._live_display = None
-        self.console.print()
         self._assistant_stream_open = False
         self._buffer = ""
         self._last_render_pos = 0
 
     def stream_assistant_delta(self, content: str) -> None:
         self._buffer += content
-        if self._live_display is None:
-            self.stop_thinking()
-            self._live_display = Live(
-                Markdown(self._buffer),
-                console=self.console,
-                refresh_per_second=15,
-                transient=False,
-                vertical_overflow="visible",
-            )
-            self._live_display.start()
-        else:
+        if self._live_display is not None:
             self._live_display.update(Markdown(self._buffer))
     
     def assistant_thinking(self, message: str = "Thinking") -> None:
-        """Show an animated thinking/loading indicator"""
-        if self._live_display is None:
-            spinner = Spinner("dots", text=f"[thinking]{message}...[/]", style="thinking")
-            self._live_display = Live(spinner, console=self.console, refresh_per_second=10, transient=True)
-            self._live_display.start()
+        if self._live_display is not None:
+            self._live_display.update(
+                Spinner("dots", text=f"[thinking]{message}...[/]", style="thinking")
+            )
     
     def stop_thinking(self) -> None:
-        """Stop the thinking indicator"""
-        if self._live_display is not None:
-            try:
-                self._live_display.stop()
-            except Exception:
-                pass 
-            self._live_display = None
+        pass  # Transition handled by live.update() in stream_assistant_delta
     
     def agent_started(self, agent_name: str, message: str) -> None:
-        """Display when agent starts processing"""
-        self.console.print(f"[working]▶ Agent started:[/] [dim]{agent_name}[/]")
+        if self._live_display is not None:
+            self._live_display.update(
+                Spinner("dots", text=f"[working]▶ {agent_name}...[/]", style="working")
+            )
     
     def agent_finished(self, agent_name: str, response: str | None = None) -> None:
-        """Display when agent finishes"""
-        if response:
-            self.console.print(f"\n[done]✓ Agent finished[/]")
+        if self._live_display is not None:
+            self._live_display.stop()
+            self._live_display = None
+        self.console.print()
+            
     
     def agent_error(self, message: str) -> None:
         """Display agent errors"""
