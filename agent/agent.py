@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import AsyncGenerator
 
 from agent.events import AgentEvent, AgentEventType
+from context.context_manager import ContextManager
 from lib.response import StreamEventType
 from llm.client import LLMProvider
 
@@ -10,11 +11,13 @@ class Agent:
     def __init__(self ):
         self.client = LLMProvider()
         self.agentId : str = "ask_agent"
+        self.context_manager = ContextManager()
     
     async def run(self,mesage:str)->AsyncGenerator[AgentEvent, None]:
         yield AgentEvent.agent_started(agent_name=self.agentId , message=mesage)
+        self.context_manager.add_user_message(mesage)
         final_response:str | None = None
-        async for event in self._agentic_loop(mesage):
+        async for event in self._agentic_loop():
             yield event
             if event.type == AgentEventType.TEXT_COMPLETE:
                 final_response = event.data.get("content") if event.data.get("content") else "No content"
@@ -22,13 +25,8 @@ class Agent:
         yield AgentEvent.agent_finished(agent_name=self.agentId , response=final_response, usage=None)
 
 
-    async def  _agentic_loop(self,message_content:str)->AsyncGenerator[AgentEvent, None]:
-        message = [
-            {
-                "role": "user",
-                "content": message_content
-            }
-        ]
+    async def  _agentic_loop(self)->AsyncGenerator[AgentEvent, None]:
+        message = self.context_manager.get_context()
 
         if (not self.client):
             yield AgentEvent.agent_error(agent_name=self.agentId, message="LLM client is not initialized.")
@@ -45,6 +43,8 @@ class Agent:
                 error_message = event.error if event.error else "Unknown error"
                 yield AgentEvent.agent_error(agent_name=self.agentId, message=error_message)
     
+        #NOTE: we will add the assistant message to the context manager after the response is complete, so that we have the full response text available for token counting and other processing if needed. This also allows us to yield a text_complete event with the full response text.
+        self.context_manager.add_assistant_message(response_text)
         if response_text:
             yield AgentEvent.text_complete(agent_name=self.agentId, content=response_text)
     
