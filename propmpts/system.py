@@ -1,7 +1,3 @@
-from datetime import datetime
-import platform
-
-
 def get_system_prompt() -> str:
     parts = []
 
