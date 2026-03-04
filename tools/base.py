@@ -34,8 +34,8 @@ class ToolResult:
     truncated: bool = False
 
     @classmethod
-    def error_result(cls, error: str, output: str = ""):
-        return cls(success=False, error=error, output=output)
+    def error_result(cls, error: str, output: str = "",**kwargs):
+        return cls(success=False, error=error, output=output, **kwargs)
 
     @classmethod
     def success_result(cls, output: str, **kwargs):
