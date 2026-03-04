@@ -5,6 +5,7 @@ from agent.events import AgentEvent, AgentEventType
 from context.context_manager import ContextManager
 from lib.response import StreamEventType
 from llm.client import LLMProvider
+from tools.registry import create_tool_registry
 
 
 class Agent:
@@ -12,6 +13,7 @@ class Agent:
         self.client = LLMProvider()
         self.agentId : str = "ask_agent"
         self.context_manager = ContextManager()
+        self.tool_registry = create_tool_registry()
     
     async def run(self,mesage:str)->AsyncGenerator[AgentEvent, None]:
         yield AgentEvent.agent_started(agent_name=self.agentId , message=mesage)
@@ -27,6 +29,7 @@ class Agent:
 
     async def  _agentic_loop(self)->AsyncGenerator[AgentEvent, None]:
         message = self.context_manager.get_context()
+        tools = self.tool_registry.get_schemas()
 
         if (not self.client):
             yield AgentEvent.agent_error(agent_name=self.agentId, message="LLM client is not initialized.")
@@ -34,7 +37,8 @@ class Agent:
 
         response_text = ""
 
-        async for event in self.client.send_message(message, stream=True):
+        async for event in self.client.send_message(message, tools = tools if tools else None, stream=True):
+            print(event)
             if event.type == StreamEventType.TEXT_DELTA:
                 content = event.text_delta.content if event.text_delta else ""
                 response_text += content

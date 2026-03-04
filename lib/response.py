@@ -3,12 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
+import json
 
 
 class StreamEventType(str,Enum):
     TEXT_DELTA = "text_delta"
     MESSAGE_COMPLETE = "message_complete"
     ERROR = "error"
+
+    TOOL_CALL_START = "tool_call_start"
+    TOOL_CALL_DELTA = "tool_call_delta"
+    TOOL_CALL_END = "tool_call_end"
 
 @dataclass
 class TextDelta:
@@ -35,9 +40,40 @@ class TokenUsage:
         )
 
 @dataclass
+class ToolCallDelta:
+    id : str
+    name : str | None = None
+    arguments : str = ""
+
+@dataclass
+class ToolCall:
+    id : str
+    name : str | None = None
+    arguments : str = ""
+    result : str | None = None
+    error : str | None = None
+
+    
+
+
+@dataclass
 class StreamEvent:
     type : StreamEventType
+    tool_call_delta : ToolCallDelta | None = None
+    tool_call: ToolCall | None = None
     text_delta: TextDelta | None = None
     error : str | None = None
     finished_reason : str | None = None
     usage : TokenUsage | None = None
+
+
+def parase_tool_call_arguments(arguments:str):
+    if not arguments:
+        return {}
+
+
+    try:
+        return json.loads(arguments)
+    except json.JSONDecodeError:
+        print("Failed to parse tool call arguments as JSON. Returning raw string.")
+        return {"raw_arguments": arguments}

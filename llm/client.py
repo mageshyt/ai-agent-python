@@ -1,11 +1,11 @@
 import asyncio
+import logging
 import dotenv
-from lib.response import StreamEventType, StreamEvent, TextDelta, TokenUsage
+from lib.response import StreamEventType, StreamEvent, TextDelta, TokenUsage, ToolCall, ToolCallDelta, parase_tool_call_arguments
 from openai import AsyncOpenAI , RateLimitError, APIConnectionError
 from typing import Any, AsyncGenerator
 
 dotenv.load_dotenv()
-
 
 class LLMProvider:
     def __init__(self) -> None:
@@ -20,13 +20,34 @@ class LLMProvider:
                 base_url=dotenv.get_key(dotenv.find_dotenv(), "BASE_URL"),
             )
         return self._client
-
+    
+    def _build_tools(self,tools: list[dict[str,Any]]):
+        return [ 
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool.get("description", ""),
+                        "parameters": tool.get("parameters", {
+                            "type": "object",
+                            "properties": {},
+                            })
+                        }
+                    } for tool in tools
+                ]
     async def send_message(
-        self, message: list[dict[str, Any]], stream: bool = True
+        self, message: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        stream: bool = True
         ) -> AsyncGenerator[StreamEvent, None]:
 
         client = self.get_client()
         kwargs = {"model": self.model, "messages": message, "stream": stream}
+
+        if tools:
+            kwargs["tools"] = self._build_tools(tools)
+            kwargs["tool_choice"] = "auto"  # let the model decide which tool to use, we can also implement a more complex tool selection strategy if needed
+
         for attempt in range(self.max_retries+1):
             try :
 
@@ -59,6 +80,7 @@ class LLMProvider:
         resposne = await client.chat.completions.create(**kwargs)
         usage : TokenUsage | None = None
         finished_reason : str | None = None
+        tool_calls:dict[int, dict[str, Any]] = {}
 
         async for chunk in resposne:
 
@@ -74,21 +96,58 @@ class LLMProvider:
             if not hasattr(chunk, "choices") or len(chunk.choices) == 0:
                 continue
             choice = chunk.choices[0]
-            message = choice.delta
-
+            delta = choice.delta
             text_delta = None
 
-            if hasattr(choice, "finish_reason") and choice.finish_reason is not None:
-                finished_reason = choice.finish_reason
+            if delta.tool_calls:
+                for idx, tool_call in enumerate(delta.tool_calls):
+                    print(f"Tool call delta received: {tool_call}")
+                    if idx not in tool_calls:
+                        tool_calls[idx] = {
+                            'id' : tool_call.id if hasattr(tool_call, "id") else "",
+                            "name": '',
+                            'arguments': ''
+                        }
 
-            if message.content is not None:
-                text_delta = TextDelta(content=message.content, role=message.role)
+                        if tool_call.function:
+                            if tool_call.function.name:
+                                tool_calls[idx]["name"] = tool_call.function.name
+                                yield StreamEvent(
+                                        type = StreamEventType.TOOL_CALL_START,
+                                        tool_call_delta= ToolCallDelta(
+                                            id=tool_calls[idx]['id'],
+                                            name=tool_calls[idx]['name'],
+                                            arguments=tool_calls[idx]['arguments']
+                                            )
+                                        )
+
+
+                            if hasattr(tool_call.function,"arguments"):
+                                tool_calls[idx]['arguments'] += tool_call.function.arguments
+                                yield StreamEvent(
+                                    type = StreamEventType.TOOL_CALL_DELTA,
+                                    tool_call_delta= ToolCallDelta(
+                                        id=tool_calls[idx]['id'],
+                                        name=tool_calls[idx]['name'],
+                                        arguments=tool_calls[idx]['arguments']
+                                        )
+                                    )
+            if delta.content is not None:
+                text_delta = TextDelta(content=delta.content, role=delta.role)
 
                 yield StreamEvent(
                     type=StreamEventType.TEXT_DELTA,
                     text_delta=text_delta,
                 )
-
+        for idx, tool_call in tool_calls.items():
+            yield StreamEvent(
+                    type = StreamEventType.TOOL_CALL_END,
+                    tool_call = ToolCall(
+                        id=tool_call['id'],
+                        name = tool_call['name'],
+                        arguments = parase_tool_call_arguments(tool_call['arguments']),
+                    )
+                )
         yield StreamEvent(
             type=StreamEventType.MESSAGE_COMPLETE,
             finished_reason=finished_reason,
@@ -109,6 +168,15 @@ class LLMProvider:
         if message.content is not None:
             text_delta = TextDelta(content=message.content, role=message.role)
 
+        tool_calls:[ToolCall] = []
+        if message.tool_calls:
+            for idx, tool_call in enumerate(message.tool_calls):
+                tool_calls.append(ToolCall(
+                    id=tool_call.id if hasattr(tool_call, "id") else "",
+                    name=tool_call.function.name if hasattr(tool_call, "function") and hasattr(tool_call.function,"name") else "",
+                    arguments=parase_tool_call_arguments(tool_call.function.arguments) if hasattr(tool_call, "function") and hasattr(tool_call.function,"arguments") else "",
+                ))
+
         if response.usage is not None:
             usage = TokenUsage(
                 prompt_tokens=response.usage.prompt_tokens,
@@ -116,6 +184,9 @@ class LLMProvider:
                 total_tokens=response.usage.total_tokens,
                 cached_tokens=response.usage.prompt_tokens_details.cached_tokens,
             )
+
+
+
 
         return StreamEvent(
             type=StreamEventType.TEXT_DELTA,
