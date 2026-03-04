@@ -1,10 +1,10 @@
 import asyncio
+from typing_extensions import override
 
 from pydantic import BaseModel, Field
 
-from lib.paths import MAX_FILE_SIZE, check_file_size, is_binary_file, resolve_path
-from lib.text import count_tokens, truncate_text_by_tokens
-from tools.base import Tool, ToolInvocation, ToolKind, ToolResult
+from lib import MAX_FILE_SIZE,check_file_size, is_binary_file, resolve_path ,  count_tokens, truncate_text_by_tokens
+from tools import Tool, ToolInvocation, ToolKind, ToolResult
 
 
 class ReadFileParams(BaseModel):
@@ -25,6 +25,7 @@ class ReadFileTool(Tool):
         "For large files ,use offset and limit to read in chunks"
         "Cannot read binary files (e.g., images, videos)"
     )
+    schema = ReadFileParams
 
     MAX_OUTPUT_TOKENS = 15000 # maximum tokens to return in the output
 
@@ -112,7 +113,7 @@ class ReadFileTool(Tool):
             )
         except Exception as e:
                 return ToolResult.error_result(f"Error reading file: {str(e)}")
-
+    
 
 if __name__ == "__main__":
     import os
