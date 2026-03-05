@@ -67,7 +67,7 @@ class StreamEvent:
     usage : TokenUsage | None = None
 
 
-def parase_tool_call_arguments(arguments:str):
+def parase_tool_call_arguments(arguments:str) -> dict[str, Any]:
     if not arguments:
         return {}
 
@@ -77,3 +77,20 @@ def parase_tool_call_arguments(arguments:str):
     except json.JSONDecodeError:
         print("Failed to parse tool call arguments as JSON. Returning raw string.")
         return {"raw_arguments": arguments}
+
+
+@dataclass
+class ToolResultMessage:
+    tool_call_id:str
+    content:str
+    is_error:bool = False
+
+    def to_openai_message(self)->dict[str, Any]:
+        return {
+            "role": "tool",
+            "content": {
+                "tool_call_id": self.tool_call_id,
+                "result": self.content,
+                "is_error": self.is_error
+            }
+        }
