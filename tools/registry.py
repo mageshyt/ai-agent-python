@@ -39,7 +39,7 @@ class ToolRegistry:
         return tools
 
 
-    async def invoke_tool(self, name: str, params: dict[str, Any],cwd:Path|None) -> Any:
+    async def invoke_tool(self, name: str, params: dict[str, Any],cwd:Path|None) -> ToolResult:
         tool = self.get_tool(name)
         if not tool:
             logger.error(f"Tool '{name}' not found in registry. Cannot invoke.")
@@ -57,7 +57,8 @@ class ToolRegistry:
 
         try:
             invocation = ToolInvocation(cwd=cwd, params=params)
-            await tool.execute(invocation)
+            result = await tool.execute(invocation)
+            return result
         except Exception as e:
             logger.exception(f"Error invoking tool '{name}': {str(e)}")
             return ToolResult.error_result(f"Error invoking tool '{name}': {str(e)}", metadata={"tool_name": name})

@@ -41,6 +41,11 @@ class ToolResult:
     def success_result(cls, output: str, **kwargs):
         return cls(success=True, output=output, **kwargs)
 
+    def to_model_output(self)->str:
+        if self.success:
+            return self.output
+        else:
+            return f"Error: {self.error}\nOutput: {self.output}"
 
 @dataclass
 class ToolConfirmation:
