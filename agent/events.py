@@ -4,6 +4,7 @@ from dataclasses import dataclass , field
 from typing import Any
 
 from lib.response import TokenUsage
+from tools.base import ToolResult
 
 
 class AgentEventType(str,Enum):
@@ -71,4 +72,27 @@ class AgentEvent:
                   'content':content 
                   }
             )
+
+    @classmethod
+    def tool_started(cls, call_id: str , tool_name :str , arguments:dict[str,Any]) -> AgentEvent:
+        return cls(
+            type=AgentEventType.TOOL_STARTED,
+            data={"call_id": call_id , 'tool_name': tool_name , 'arguments': arguments}
+        )
+
+
+    @classmethod
+    def tool_finished(cls, call_id: str , tool_name :str , result:ToolResult) -> AgentEvent:
+        return cls(
+            type=AgentEventType.TOOL_FINISHED,
+            data={
+                "call_id": call_id ,
+                  'tool_name': tool_name ,
+                  'success': result.success , 
+                  'error': result.error ,
+                  'metadata': result.metadata ,
+                  'truncated' : result.truncated,
+                  'result': result.__dict__
+                }
+        )
 
