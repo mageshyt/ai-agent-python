@@ -307,3 +307,5 @@ To break out of this loop, please:
 
 Do not repeat the same action again.
 """
+if __name__ == "__main__":
+    print(get_system_prompt())

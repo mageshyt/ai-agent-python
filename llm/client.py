@@ -109,29 +109,29 @@ class LLMProvider:
                             'arguments': ''
                         }
 
-                        if tool_call.function:
-                            if tool_call.function.name:
-                                tool_calls[idx]["name"] = tool_call.function.name
-                                yield StreamEvent(
-                                        type = StreamEventType.TOOL_CALL_START,
-                                        tool_call_delta= ToolCallDelta(
-                                            id=tool_calls[idx]['id'],
-                                            name=tool_calls[idx]['name'],
-                                            arguments=tool_calls[idx]['arguments']
-                                            )
-                                        )
-
-
-                            if hasattr(tool_call.function,"arguments"):
-                                tool_calls[idx]['arguments'] += tool_call.function.arguments
-                                yield StreamEvent(
-                                    type = StreamEventType.TOOL_CALL_DELTA,
+                    if tool_call.function:
+                        if tool_call.function.name:
+                            tool_calls[idx]["name"] = tool_call.function.name
+                            yield StreamEvent(
+                                    type = StreamEventType.TOOL_CALL_START,
                                     tool_call_delta= ToolCallDelta(
                                         id=tool_calls[idx]['id'],
                                         name=tool_calls[idx]['name'],
                                         arguments=tool_calls[idx]['arguments']
                                         )
                                     )
+
+
+                        if hasattr(tool_call.function,"arguments"):
+                            tool_calls[idx]['arguments'] += tool_call.function.arguments
+                            yield StreamEvent(
+                                type = StreamEventType.TOOL_CALL_DELTA,
+                                tool_call_delta= ToolCallDelta(
+                                    id=tool_calls[idx]['id'],
+                                    name=tool_calls[idx]['name'],
+                                    arguments=tool_calls[idx]['arguments']
+                                    )
+                                )
             if delta.content is not None:
                 text_delta = TextDelta(content=delta.content, role=delta.role)
 
