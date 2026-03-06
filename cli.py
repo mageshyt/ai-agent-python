@@ -86,11 +86,34 @@ class CLI:
                     content = event.data.get("content", "No content")
                     final_response = content
                     self.tui.text_complete(content)
+
+                case AgentEventType.TOOL_STARTED:
+                    tool_name = event.data.get('tool_name', 'unknown')
+                    tool_detail =  self.agent.tool_registry.get_tool(tool_name)  # Ensure tool is registered
+                    if not tool_detail:
+                        self.tui.agent_error(f"Tool '{tool_name}' not found in registry.")
+                        continue
+
+                    tool_kind = tool_detail.kind if tool_detail else "unknown"
+
+                    self.tui.tool_call_started(
+                        call_id=event.data.get('call_id', ''),
+                        tool_name=tool_name,
+                        arguments=event.data.get('arguments', {}),
+                        tool_kind=tool_kind
+                    )
+                case AgentEventType.TOOL_FINISHED:
+                    self.tui.tool_call_finished(
+                        call_id=event.data.get("call_id", ""),
+                        tool_name=event.data.get("tool_name", "unknown"),
+                        success=event.data.get("success", False),
+                    )
                     
                 case AgentEventType.AGENT_FINISHED:
                     agent_name = event.data.get('agent_name', 'unknown')
                     response = event.data.get('response')
-                    self.tui.agent_finished(agent_name, response)
+                    usage = event.data.get('usage')
+                    self.tui.agent_finished( agent_name, response )
                     
                 case AgentEventType.AGENT_ERROR:
                     error_msg = event.data.get('message', 'Unknown error')

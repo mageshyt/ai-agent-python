@@ -71,7 +71,6 @@ class Agent:
                 )
                 # TODO: when we do config , resolve the path
                 result = await self.tool_registry.invoke_tool(tool_name, tool_arguments,Path.cwd())
-                print("Tool result:", result)
 
                 yield AgentEvent.tool_finished(
                     call_id=tool_call.id,

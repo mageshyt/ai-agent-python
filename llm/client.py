@@ -101,7 +101,6 @@ class LLMProvider:
 
             if delta.tool_calls:
                 for idx, tool_call in enumerate(delta.tool_calls):
-                    print(f"Tool call delta received: {tool_call}")
                     if idx not in tool_calls:
                         tool_calls[idx] = {
                             'id' : tool_call.id if hasattr(tool_call, "id") else "",
