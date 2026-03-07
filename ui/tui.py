@@ -220,7 +220,11 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
     
     def tool_call_started(self, call_id: str, tool_name: str, arguments: dict[str, Any],tool_kind : str) -> None:
         self._tool_args_by_call_id[call_id] = arguments
-        border_style = f"tool.{tool_kind}" if f"tool.{tool_kind}" in AGENT_THEME.styles else "tool"
+
+        # Resolve enum value so lookup produces e.g. "tool.read" not "tool.ToolKind.read"
+        kind_str = tool_kind.value if hasattr(tool_kind, "value") else str(tool_kind)
+        border_style = f"tool.{kind_str}" if f"tool.{kind_str}" in AGENT_THEME.styles else "tool"
+
         title = Text.assemble(
                 ("▶ ", "muted"),
                 (tool_name, "tool"),
@@ -229,14 +233,14 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
                 )
 
         display_args = dict(arguments)
-        for key in ('path','cwd'):
+        for key in ('path', 'cwd'):
             if key in display_args:
                 val = display_args[key]
-                # get relative path
-                if isinstance(val , str) and self.cwd:
-                    display_args[key] = str(get_relative_path(val,self.cwd))
-        panel = Panel(
-            self._render_args_table(tool_name,display_args) if display_args else Text("No arguments" ),
+                if isinstance(val, str) and self.cwd:
+                    display_args[key] = str(get_relative_path(val, self.cwd))
+
+        tool_panel = Panel(
+            self._render_args_table(tool_name, display_args) if display_args else Text("No arguments"),
             title=title,
             title_align="left",
             subtitle_align="right",
@@ -245,8 +249,22 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
             padding=(1, 2),
             subtitle=Text("running...", style="muted"),
         )
+
+        # Stop live first so console.print is not swallowed, then print permanently
         if self._live_display is not None:
-            self._live_display.update(panel)
+            self._live_display.stop()
+            self._live_display = None
+
+        self.console.print(tool_panel)
+
+        # Show a spinner while the tool executes
+        self._live_display = Live(
+            Spinner("dots", text=f"[tool]{tool_name} running…[/]"),
+            console=self.console,
+            refresh_per_second=10,
+            vertical_overflow="visible",
+        )
+        self._live_display.start()
 
     def tool_call_finished(self,
        call_id: str,
@@ -258,7 +276,8 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
        metadata: dict[str, Any] | None = None,
        truncated: bool = False
     ) -> None:
-        border_style = f"tool.{tool_kind}" if tool_kind and f"tool.{tool_kind}" in AGENT_THEME.styles else "tool"
+        kind_str = tool_kind.value if tool_kind and hasattr(tool_kind, "value") else str(tool_kind or "")
+        border_style = f"tool.{kind_str}" if kind_str and f"tool.{kind_str}" in AGENT_THEME.styles else "tool"
         status_icon = "✓" if success else "✗"
         status_style = "success" if success else "error"
         title = Text.assemble(
@@ -310,11 +329,24 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
             padding=(1, 1),
             subtitle=Text("done" if success else "failed", style=status_style),
         )
+
+        # Stop spinner, print result permanently, restart Thinking… for next LLM round
         if self._live_display is not None:
-            self._live_display.update(panel)
+            self._live_display.stop()
+            self._live_display = None
 
+        self.console.print(panel)
 
-        
+        # NOTE: uncomment when agent loop added
+        # self._buffer = ""
+        # self._live_display = Live(
+        #     Spinner("dots", text="[thinking]Thinking…[/]", style="thinking"),
+        #     console=self.console,
+        #     refresh_per_second=15,
+        #     vertical_overflow="visible",
+        # )
+        # self._live_display.start()
+
     def subagent_started(self, subagent_name: str) -> None:
         """Display when a subagent is invoked"""
         style = f"subagent.{subagent_name}" if f"subagent.{subagent_name}" in AGENT_THEME.styles else "subagent"
