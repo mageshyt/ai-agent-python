@@ -103,10 +103,16 @@ class CLI:
                         tool_kind=tool_kind
                     )
                 case AgentEventType.TOOL_FINISHED:
+                    tool_kind = self._get_tool_kind(event.data.get('tool_name', 'unknown'))
                     self.tui.tool_call_finished(
-                        call_id=event.data.get("call_id", ""),
-                        tool_name=event.data.get("tool_name", "unknown"),
-                        success=event.data.get("success", False),
+                            call_id=event.data.get('call_id', ''),
+                            tool_name=event.data.get('tool_name', 'unknown'),
+                            success=event.data.get('success', False),
+                            tool_kind=tool_kind,
+                            output=event.data.get('output', ''),
+                            error=event.data.get('error', ''),
+                            truncated=event.data.get('truncated', False),
+                            metadata=event.data.get('metadata',None)
                     )
                     
                 case AgentEventType.AGENT_FINISHED:
@@ -153,3 +159,10 @@ class CLI:
                     console.clear()
                 else:
                     await self._process_message(cmd)
+
+    def _get_tool_kind(self, tool_name:str) -> str:
+        if not self.agent:
+            return "unknown"
+        tool_detail = self.agent.tool_registry.get_tool(tool_name)
+        return tool_detail.kind if tool_detail else "unknown"
+
