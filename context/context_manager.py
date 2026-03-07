@@ -13,7 +13,7 @@ class MessageItem:
     tool_calls: list[dict[str, Any]] | None = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        result : dict[str, Any] = { "role": self.role }
+        result: dict[str, Any] = {"role": self.role}
 
         if self.tool_call_id:
             result["tool_call_id"] = self.tool_call_id
@@ -21,10 +21,10 @@ class MessageItem:
         if self.tool_calls:
             result["tool_calls"] = self.tool_calls
 
-        if self.content:
+        # tool messages always need content; assistant messages include it when non-empty
+        if self.role == "tool" or self.content:
             result["content"] = self.content
-        if self.token_count is not None:
-            result["token_count"] = self.token_count
+
         return result
 class ContextManager:
     def __init__(self) -> None:
