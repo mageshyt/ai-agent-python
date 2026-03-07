@@ -1,12 +1,23 @@
-from rich.console import Console
+from pathlib import Path
+from typing import Any
+
+from rich import console, panel, style
+from rich.console import Console, Group
 from rich.markdown import Markdown
+from rich.syntax import Syntax
 from rich.theme import Theme
 from rich.rule import Rule
 from rich.text import Text
 from rich.spinner import Spinner
 from rich.live import Live
 from rich.panel import Panel
+from rich.table import Table 
 from rich import box
+
+from lib.paths import get_relative_path
+import re
+
+from lib.text import truncate_text_by_tokens
 
 AGENT_THEME = Theme({
     # Agent and assistant styles
@@ -20,6 +31,7 @@ AGENT_THEME = Theme({
     "error": "bold red",
     "warning": "bold yellow",
     "info": "bold blue",
+    "muted": "gray50",
     
     # Agent states
     "thinking": "italic cyan",
@@ -30,6 +42,12 @@ AGENT_THEME = Theme({
     # Tools and actions
     "tool": "bold yellow",
     "tool.name": "bold bright_yellow",
+    "tool.read": "cyan",
+    "tool.write": "yellow",
+    "tool.shell": "magenta",
+    "tool.network": "blue",
+    "tool.memory": "green",
+    "tool.mcp": "bright_cyan",
     "tool.start": "dim yellow",
     "tool.result": "dim green",
     
@@ -78,6 +96,8 @@ class TUI:
         self._use_markdown = True
         self._last_render_pos = 0 
         self._live_display = None  
+        self._tool_args_by_call_id : dict[str, dict[str, Any]] = {}
+        self.cwd = Path.cwd()
 
     def print_welcome(self, title: str, lines: list[str]) -> None:
         body = "\n".join(lines)
@@ -170,7 +190,9 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
             )
     
     def stop_thinking(self) -> None:
-        pass  # Transition handled by live.update() in stream_assistant_delta
+        if self._live_display is not None:
+            self._live_display.stop()
+            self._live_display = None
     
     def agent_started(self, agent_name: str, message: str) -> None:
         if self._live_display is not None:
@@ -196,6 +218,103 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
         """Display complete text response"""
         pass  # Content already streamed via deltas
     
+    def tool_call_started(self, call_id: str, tool_name: str, arguments: dict[str, Any],tool_kind : str) -> None:
+        self._tool_args_by_call_id[call_id] = arguments
+        border_style = f"tool.{tool_kind}" if f"tool.{tool_kind}" in AGENT_THEME.styles else "tool"
+        title = Text.assemble(
+                ("▶ ", "muted"),
+                (tool_name, "tool"),
+                (" ","muted"),
+                (f"#{call_id[:8]}", "dim"),
+                )
+
+        display_args = dict(arguments)
+        for key in ('path','cwd'):
+            if key in display_args:
+                val = display_args[key]
+                # get relative path
+                if isinstance(val , str) and self.cwd:
+                    display_args[key] = str(get_relative_path(val,self.cwd))
+        panel = Panel(
+            self._render_args_table(tool_name,display_args) if display_args else Text("No arguments" ),
+            title=title,
+            title_align="left",
+            subtitle_align="right",
+            border_style=border_style,
+            box=box.ROUNDED,
+            padding=(1, 2),
+            subtitle=Text("running...", style="muted"),
+        )
+        if self._live_display is not None:
+            self._live_display.update(panel)
+
+    def tool_call_finished(self,
+       call_id: str,
+       tool_name: str,
+       tool_kind: str | None,
+       success: bool,
+       output:str,
+       error:str | None = None,
+       metadata: dict[str, Any] | None = None,
+       truncated: bool = False
+    ) -> None:
+        border_style = f"tool.{tool_kind}" if tool_kind and f"tool.{tool_kind}" in AGENT_THEME.styles else "tool"
+        status_icon = "✓" if success else "✗"
+        status_style = "success" if success else "error"
+        title = Text.assemble(
+                (f"{status_icon} ", status_style),
+                (tool_name, "tool"),
+                (" ","muted"),
+                (f"#{call_id[:8]}", "dim"),
+                )
+        primary_path = None
+        blocks = [] # contain all the blocks to be rendered in the panel
+
+        if isinstance(metadata, dict) and isinstance(metadata.get("path"), str):
+            primary_path = get_relative_path(metadata["path"], self.cwd)
+
+        if tool_name == "read_file" and success:
+            start_line, content = self._extract_read_file_content(output) or (0, output)
+            show_start = metadata.get("start_line", None)
+            show_end = metadata.get("end_line", None)
+            total_lines = metadata.get("total_lines", None)
+            code_language = self._guess_language(primary_path) if primary_path else None
+
+            header_parts = [primary_path or "file content"]
+            header_parts.append(" • ")
+
+            if show_start is not None and show_end is not None and total_lines is not None:
+                header_parts.append(f"lines {show_start}-{show_end} of {total_lines}")
+            elif total_lines is not None:
+                header_parts.append(f"{total_lines} lines")
+
+            header = "".join(header_parts)
+            blocks.append(Text(header, style="muted"))
+            if code_language:
+                blocks.append(Syntax(content, lexer=code_language, word_wrap=True,line_numbers=True, start_line=start_line))
+            else:
+                output_display = truncate_text_by_tokens(output,250,"")
+                blocks.append(Syntax(output_display,"text", word_wrap=False))
+        else:             
+            content = error if not success and error else output
+
+        if truncated:
+            blocks.append(Text("\n[output truncated]", style="muted italic"))
+        panel = Panel(
+            Group(*blocks) if blocks else Text(content or "No output", style="tool.result"),
+            title=title,
+            title_align="left",
+            subtitle_align="right",
+            border_style=border_style,
+            box=box.ROUNDED,
+            padding=(1, 1),
+            subtitle=Text("done" if success else "failed", style=status_style),
+        )
+        if self._live_display is not None:
+            self._live_display.update(panel)
+
+
+        
     def subagent_started(self, subagent_name: str) -> None:
         """Display when a subagent is invoked"""
         style = f"subagent.{subagent_name}" if f"subagent.{subagent_name}" in AGENT_THEME.styles else "subagent"
@@ -239,4 +358,105 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
 - The agent can read, write, and execute code
 - Some operations require approval (can be configured)
 """
-        self.console.print(Markdown(help_text))
+    def _ordered_args(self,tool_name:str,args:dict[str, Any]) -> list[tuple[str,Any]]:
+        """
+        this funtion helps to show the most important arguments of a tool call first in the TUI. It uses a predefined order for known tools, and then appends any remaining arguments in arbitrary order.
+        """
+        _PREFERRED_ORDER = {
+                'read_file': ['path','offset','limit'],
+                "write_file": ["path", "create_directories", "content"],
+                "edit": ["path", "replace_all", "old_string", "new_string"],
+                "shell": ["command", "timeout", "cwd"],
+                "list_dir": ["path", "include_hidden"],
+                "grep": ["path", "case_insensitive", "pattern"],
+                "glob": ["path", "pattern"],
+                "todos": ["id", "action", "content"],
+                "memory": ["action", "key", "value"],
+        }
+
+        preffered = _PREFERRED_ORDER.get(tool_name, [])
+        ordered:list[tuple[str,Any]] = []
+        seen = set()
+
+        for key in preffered:
+            if key in args:
+                ordered.append((key,args[key]))
+                seen.add(key)
+
+        remaining_keys =set(args.keys() - seen)
+        ordered.extend([(key,args[key]) for key in remaining_keys])
+        return ordered
+
+    def _render_args_table(self,tool_name:str,args:dict[str, Any]) -> Table:
+        table = Table.grid(padding = (0,1))
+        table.add_column(style="muted",justify='right',no_wrap=True)
+        table.add_column(style="code", overflow="fold")
+
+        for key, value in self._ordered_args(tool_name,args):
+            table.add_row(key, value)
+        return table
+
+    def _extract_read_file_content(self,text:str) -> tuple[int,str]|None:
+        """
+        This function is a helper to extract file content from a tool call output, specifically for read_file tool. It looks for a specific pattern in the text to identify the content and its offset.
+        """
+        body = text
+        header = re.match(r"^Showing lines (\d+) to (\d+) of (\d+)\n\n", text)
+
+        if header:
+            # trim down the header
+            body = text[header.end():]
+
+        code_lines:list[str] = []
+        start_line : int = 0
+
+        for line in body.splitlines():
+            # we have reframe the code lines from num|content to just content
+            match = re.match(r"^\s*(\d+)\|(.*)$", line)
+            if not match:
+                return None
+
+            line_num = int(match.group(1))
+            if start_line == 0:
+                start_line = line_num
+            content = match.group(2)
+            code_lines.append(content)
+
+
+        if not code_lines or start_line == 0:
+            return None
+
+        return start_line, "\n".join(code_lines)
+
+    def _guess_language(self, path: str | None) -> str:
+        if not path:
+            return "text"
+        suffix = Path(path).suffix.lower()
+        return {
+            ".py": "python",
+            ".js": "javascript",
+            ".jsx": "jsx",
+            ".ts": "typescript",
+            ".tsx": "tsx",
+            ".json": "json",
+            ".toml": "toml",
+            ".yaml": "yaml",
+            ".yml": "yaml",
+            ".md": "markdown",
+            ".sh": "bash",
+            ".bash": "bash",
+            ".zsh": "bash",
+            ".rs": "rust",
+            ".go": "go",
+            ".java": "java",
+            ".kt": "kotlin",
+            ".swift": "swift",
+            ".c": "c",
+            ".h": "c",
+            ".cpp": "cpp",
+            ".hpp": "cpp",
+            ".css": "css",
+            ".html": "html",
+            ".xml": "xml",
+            ".sql": "sql",
+        }.get(suffix, "text")
