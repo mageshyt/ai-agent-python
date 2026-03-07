@@ -2,6 +2,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import AsyncGenerator
 
+from rich import console
+
 from agent.events import AgentEvent, AgentEventType
 from context.context_manager import ContextManager
 from lib.response import StreamEventType, ToolCall, ToolResultMessage
@@ -54,7 +56,9 @@ class Agent:
                     tool_calls.append(event.tool_call)
     
         #NOTE: we will add the assistant message to the context manager after the response is complete, so that we have the full response text available for token counting and other processing if needed. This also allows us to yield a text_complete event with the full response text.
-        self.context_manager.add_assistant_message(response_text)
+        tool_calls_data = [ tool_call.to_dict() for tool_call in tool_calls ] if tool_calls else []
+        print(f"Tool calls data: {tool_calls}")
+        self.context_manager.add_assistant_message(response_text,tool_calls=tool_calls_data)
         if response_text:
             yield AgentEvent.text_complete(agent_name=self.agentId, content=response_text)
         
@@ -88,6 +92,7 @@ class Agent:
 
         for tool_result in tool_call_result:
             # add the tool result to the context manager so that it can be used in subsequent tool calls or in the final response if needed
+            print(f"Adding tool result to context manager: {tool_result}")
             self.context_manager.add_tool_result(tool_result.tool_call_id, tool_result.content)
 
     async def _check_for_agent(self) :

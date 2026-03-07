@@ -36,8 +36,15 @@ class ContextManager:
     def add_user_message(self, content: str) -> None:
         self._messages.append(MessageItem(role="user", content=content , token_count=count_tokens(content, model=self._model)))
 
-    def add_assistant_message(self, content: str) -> None:
-        self._messages.append(MessageItem(role="assistant", content=content, token_count=count_tokens(content, model=self._model)))
+    def add_assistant_message(self, content: str,tool_calls:list[dict[str,Any]]) -> None:
+        self._messages.append(
+                MessageItem(
+                    role="assistant", 
+                    content=content,
+                    token_count=count_tokens(content, model=self._model),
+                    tool_calls=tool_calls or []
+                    )
+                )
 
     def get_context(self) -> list[dict[str, Any]]:
         context = [{"role": "system", "content": self.system_prompts}]

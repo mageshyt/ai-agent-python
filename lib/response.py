@@ -53,6 +53,18 @@ class ToolCall:
     result : str | None = None
     error : str | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+                "id": self.id,
+                "type": "function",
+                "function": {
+                    "name": self.name,
+                    "arguments": str(self.arguments)
+                    }
+            }
+
+
+
     
 
 
