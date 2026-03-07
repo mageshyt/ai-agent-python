@@ -92,6 +92,7 @@ class AgentEvent:
                   'error': result.error ,
                   'metadata': result.metadata ,
                   'truncated' : result.truncated,
+                  'output' : result.output,
                   'result': result.__dict__
                 }
         )
