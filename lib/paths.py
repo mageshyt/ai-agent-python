@@ -23,6 +23,20 @@ def is_binary_file(path: Path) -> bool:
         print(f"Error checking file type: {e}")
         return False
 
+def get_relative_path(path: str, cwd: Path) -> str:
+    try:
+        p = Path(path)
+    except ValueError:
+        return path  # Return original if path is invalid
+
+    if cwd:
+        try:
+            return str(p.relative_to(cwd))
+        except ValueError:
+            pass
+
+    return str(p)
+
 
 if __name__ == "__main__":
     print(resolve_path("/home/user", "file.txt"))
