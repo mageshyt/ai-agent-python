@@ -1,7 +1,8 @@
+import json as _json
+import re
 from pathlib import Path
 from typing import Any
 
-from rich import console, panel, style
 from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.syntax import Syntax
@@ -11,13 +12,22 @@ from rich.text import Text
 from rich.spinner import Spinner
 from rich.live import Live
 from rich.panel import Panel
-from rich.table import Table 
+from rich.table import Table
 from rich import box
 
 from lib.paths import get_relative_path
-import re
 
-from lib.text import truncate_text_by_tokens
+# Syntax highlight theme used for all code blocks
+CODE_THEME = "one-dark"
+
+# Icon used for all tool call starts
+TOOL_ICON = "⏺"
+TOOL_ICON_SUCCESS = "✓"
+TOOL_ICON_ERROR   = "✗"
+
+# Arg keys whose values are too large to display untruncated
+_LARGE_VALUE_KEYS = {"content", "old_string", "new_string", "text", "body"}
+_MAX_ARG_LEN = 120
 
 AGENT_THEME = Theme({
     # Agent and assistant styles
@@ -65,7 +75,8 @@ AGENT_THEME = Theme({
     
     # UI elements
     "prompt": "bold white",
-    "border": "dim white",
+    "border": "grey35",
+
     "highlight": "bold bright_white",
     "dim": "dim white",
     
@@ -149,7 +160,7 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
         self.console.print(
             Panel(
                 Markdown(welcome_md),
-                title=Text("🦉 AI Agent CLI", style="highlight"),
+                title=Text("AI Agent CLI", style="highlight"),
                 title_align="left",
                 border_style="border",
                 box=box.ROUNDED,
@@ -218,134 +229,161 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
         """Display complete text response"""
         pass  # Content already streamed via deltas
     
-    def tool_call_started(self, call_id: str, tool_name: str, arguments: dict[str, Any],tool_kind : str) -> None:
+    def tool_call_started(self, call_id: str, tool_name: str, arguments: dict[str, Any], tool_kind: str) -> None:
         self._tool_args_by_call_id[call_id] = arguments
 
-        # Resolve enum value so lookup produces e.g. "tool.read" not "tool.ToolKind.read"
         kind_str = tool_kind.value if hasattr(tool_kind, "value") else str(tool_kind)
         border_style = f"tool.{kind_str}" if f"tool.{kind_str}" in AGENT_THEME.styles else "tool"
 
         title = Text.assemble(
-                ("▶ ", "muted"),
-                (tool_name, "tool"),
-                (" ","muted"),
-                (f"#{call_id[:8]}", "dim"),
-                )
+            (f"{TOOL_ICON} ", "muted"),
+            (tool_name, "tool"),
+            ("  ", "muted"),
+            (f"#{call_id[:8]}", "muted"),
+        )
 
         display_args = dict(arguments)
-        for key in ('path', 'cwd'):
-            if key in display_args:
-                val = display_args[key]
-                if isinstance(val, str) and self.cwd:
-                    display_args[key] = str(get_relative_path(val, self.cwd))
+        primary_path: str | None = None
+        for key in ("path", "cwd"):
+            if key in display_args and isinstance(display_args[key], str) and self.cwd:
+                display_args[key] = str(get_relative_path(display_args[key], self.cwd))
+                if key == "path":
+                    primary_path = display_args[key]
+
+        subtitle = Text(primary_path, style="path") if primary_path else Text("running…", style="muted")
 
         tool_panel = Panel(
-            self._render_args_table(tool_name, display_args) if display_args else Text("No arguments"),
+            self._render_args_table(tool_name, display_args) if display_args else Text("No arguments", style="muted"),
             title=title,
             title_align="left",
+            subtitle=subtitle,
             subtitle_align="right",
             border_style=border_style,
             box=box.ROUNDED,
-            padding=(1, 2),
-            subtitle=Text("running...", style="muted"),
+            padding=(0, 2),
         )
 
-        # Stop live first so console.print is not swallowed, then print permanently
         if self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
 
         self.console.print(tool_panel)
 
-        # Show a spinner while the tool executes
+        # Spinner while the tool executes
         self._live_display = Live(
-            Spinner("dots", text=f"[tool]{tool_name} running…[/]"),
+            Spinner("dots", text=f"[{border_style}]{TOOL_ICON} {tool_name} running…[/]"),
             console=self.console,
             refresh_per_second=10,
             vertical_overflow="visible",
         )
         self._live_display.start()
 
-    def tool_call_finished(self,
-       call_id: str,
-       tool_name: str,
-       tool_kind: str | None,
-       success: bool,
-       output:str,
-       error:str | None = None,
-       metadata: dict[str, Any] | None = None,
-       truncated: bool = False
+    def tool_call_finished(
+        self,
+        call_id: str,
+        tool_name: str,
+        tool_kind: str | None,
+        success: bool,
+        output: str,
+        error: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        truncated: bool = False,
     ) -> None:
         kind_str = tool_kind.value if tool_kind and hasattr(tool_kind, "value") else str(tool_kind or "")
         border_style = f"tool.{kind_str}" if kind_str and f"tool.{kind_str}" in AGENT_THEME.styles else "tool"
-        status_icon = "✓" if success else "✗"
+        status_icon = TOOL_ICON_SUCCESS if success else TOOL_ICON_ERROR
         status_style = "success" if success else "error"
-        title = Text.assemble(
-                (f"{status_icon} ", status_style),
-                (tool_name, "tool"),
-                (" ","muted"),
-                (f"#{call_id[:8]}", "dim"),
-                )
-        primary_path = None
-        blocks = [] # contain all the blocks to be rendered in the panel
 
+        title = Text.assemble(
+            (f"{status_icon} ", status_style),
+            (tool_name, "tool"),
+            ("  ", "muted"),
+            (f"#{call_id[:8]}", "muted"),
+        )
+
+        primary_path: str | None = None
         if isinstance(metadata, dict) and isinstance(metadata.get("path"), str):
-            primary_path = get_relative_path(metadata["path"], self.cwd)
+            primary_path = str(get_relative_path(metadata["path"], self.cwd))
+
+        blocks: list = []
 
         if tool_name == "read_file" and success:
-            start_line, content = self._extract_read_file_content(output) or (0, output)
-            show_start = metadata.get("start_line", None)
-            show_end = metadata.get("end_line", None)
-            total_lines = metadata.get("total_lines", None)
-            code_language = self._guess_language(primary_path) if primary_path else None
+            extracted = self._extract_read_file_content(output)
+            start_line, code_content = extracted if extracted else (1, output)
+            show_start = metadata.get("start_line") if metadata else None
+            show_end   = metadata.get("end_line")   if metadata else None
+            total_lines = metadata.get("total_lines") if metadata else None
+            code_language = self._guess_language(primary_path) if primary_path else "text"
 
-            header_parts = [primary_path or "file content"]
-            header_parts.append(" • ")
-
-            if show_start is not None and show_end is not None and total_lines is not None:
-                header_parts.append(f"lines {show_start}-{show_end} of {total_lines}")
+            # File + range header
+            header = Text()
+            header.append(primary_path or "file", style="file")
+            header.append("  ", style="muted")
+            if show_start is not None and show_end is not None:
+                header.append(f"lines {show_start}–{show_end}", style="muted")
+                if total_lines is not None:
+                    header.append(f" of {total_lines}", style="dim")
             elif total_lines is not None:
-                header_parts.append(f"{total_lines} lines")
-
-            header = "".join(header_parts)
-            blocks.append(Text(header, style="muted"))
-            if code_language:
-                blocks.append(Syntax(content, lexer=code_language, word_wrap=True,line_numbers=True, start_line=start_line))
+                header.append(f"{total_lines} lines", style="muted")
+            blocks.append(header)
+            blocks.append(
+                Syntax(
+                    code_content,
+                    lexer=code_language,
+                    theme=CODE_THEME,
+                    line_numbers=True,
+                    start_line=start_line,
+                    word_wrap=False,
+                )
+            )
+        else:
+            body = (error or "") if not success else (output or "")
+            if body.strip():
+                # Try JSON pretty-print
+                rendered = False
+                if success:
+                    try:
+                        parsed = _json.loads(body)
+                        blocks.append(
+                            Syntax(
+                                _json.dumps(parsed, indent=2),
+                                lexer="json",
+                                theme=CODE_THEME,
+                                word_wrap=False,
+                            )
+                        )
+                        rendered = True
+                    except (ValueError, TypeError):
+                        pass
+                if not rendered:
+                    style = "dim white" if success else "error"
+                    blocks.append(Text(body.strip(), style=style))
             else:
-                output_display = truncate_text_by_tokens(output,250,"")
-                blocks.append(Syntax(output_display,"text", word_wrap=False))
-        else:             
-            content = error if not success and error else output
+                blocks.append(Text("(no output)", style="muted"))
 
         if truncated:
-            blocks.append(Text("\n[output truncated]", style="muted italic"))
-        panel = Panel(
-            Group(*blocks) if blocks else Text(content or "No output", style="tool.result"),
+            blocks.append(Text(" output truncated", style="muted italic"))
+
+        subtitle = Text("done" if success else "failed", style=status_style)
+        if primary_path and tool_name != "read_file":
+            subtitle = Text(primary_path, style="path")
+
+        result_panel = Panel(
+            Group(*blocks),
             title=title,
             title_align="left",
+            subtitle=subtitle,
             subtitle_align="right",
             border_style=border_style,
             box=box.ROUNDED,
-            padding=(1, 1),
-            subtitle=Text("done" if success else "failed", style=status_style),
+            padding=(0, 1),
         )
 
-        # Stop spinner, print result permanently, restart Thinking… for next LLM round
         if self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
 
-        self.console.print(panel)
-
-        # NOTE: uncomment when agent loop added
-        # self._buffer = ""
-        # self._live_display = Live(
-        #     Spinner("dots", text="[thinking]Thinking…[/]", style="thinking"),
-        #     console=self.console,
-        #     refresh_per_second=15,
-        #     vertical_overflow="visible",
-        # )
-        # self._live_display.start()
+        self.console.print(result_panel)
 
     def subagent_started(self, subagent_name: str) -> None:
         """Display when a subagent is invoked"""
@@ -419,14 +457,43 @@ Interact with your AI agent in style. Ask questions, give commands, and see resp
         ordered.extend([(key,args[key]) for key in remaining_keys])
         return ordered
 
-    def _render_args_table(self,tool_name:str,args:dict[str, Any]) -> Table:
-        table = Table.grid(padding = (0,1))
-        table.add_column(style="muted",justify='right',no_wrap=True)
-        table.add_column(style="code", overflow="fold")
+    def _render_args_table(self, tool_name: str, args: dict[str, Any]) -> Table:
+        table = Table.grid(padding=(0, 1))
+        table.add_column(style="muted", justify="right", no_wrap=True)
+        table.add_column(overflow="fold")
 
-        for key, value in self._ordered_args(tool_name,args):
-            table.add_row(key, value)
+        for key, value in self._ordered_args(tool_name, args):
+            table.add_row(key, self._format_arg_value(key, value))
         return table
+
+    def _format_arg_value(self, key: str, value: Any) -> Text:
+        """Render a single argument value with type-aware styling."""
+        if isinstance(value, bool):
+            return Text(str(value), style="cyan" if value else "muted")
+        if isinstance(value, (int, float)):
+            return Text(str(value), style="bold bright_white")
+        if not isinstance(value, str):
+            value = str(value)
+
+        # Decide max length — generous for most keys, short for large content keys
+        max_len = 60 if key in _LARGE_VALUE_KEYS else _MAX_ARG_LEN
+
+        # Collapse multiline to single line preview
+        lines = value.splitlines()
+        if len(lines) > 1:
+            preview = lines[0].strip()
+            suffix = f"  [{len(lines)} lines]"
+        else:
+            preview = value
+            suffix = ""
+
+        if len(preview) > max_len:
+            preview = preview[:max_len - 1] + "…"
+
+        t = Text(preview, style="dim white")
+        if suffix:
+            t.append(suffix, style="muted")
+        return t
 
     def _extract_read_file_content(self,text:str) -> tuple[int,str]|None:
         """
