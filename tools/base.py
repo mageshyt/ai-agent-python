@@ -16,6 +16,7 @@ class ToolKind(str, Enum):
     SHELL = "shell"
     NETWORK = "network"
     MEMORY = "memory"
+    FILE_SYSTEM = "file_system"
     MCP = "mcp"
 
 
