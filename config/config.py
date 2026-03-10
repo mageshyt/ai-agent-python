@@ -12,11 +12,19 @@ class ModelConfig(BaseModel):
     context_window: int  = 128_000 
 
 
+class ShellEnvironmentPolicy(BaseModel):
+    ignore_default_excludes: bool = False
+    exclude_patterns: list[str] = Field(
+        default_factory=lambda: ["*KEY*", "*TOKEN*", "*SECRET*", "*PASSWORD*", "*PWD*", "*AWS*", "*GCP*", "*AZURE*"]
+    )
+    set_vars: dict[str, str] = Field(default_factory=dict)
+
 class Config(BaseModel):
     model:ModelConfig = Field(default_factory=ModelConfig)
     cwd : Path = Field(default_factory=Path.cwd)
     max_turns : int = 100
     max_tool_output_tokens : int = 50_000
+    shell_environment : ShellEnvironmentPolicy = Field(default_factory=ShellEnvironmentPolicy)
 
     user_instructions:str | None = None
     debug: bool = False

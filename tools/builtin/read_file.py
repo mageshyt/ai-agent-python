@@ -1,5 +1,4 @@
 import asyncio
-from typing_extensions import override
 
 from pydantic import BaseModel, Field
 
