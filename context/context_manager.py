@@ -1,6 +1,7 @@
 
 from dataclasses import dataclass, field
 from typing import Any
+from config.config import Config
 from lib.text import count_tokens
 from propmpts.system import get_system_prompt
 
@@ -27,21 +28,23 @@ class MessageItem:
 
         return result
 class ContextManager:
-    def __init__(self) -> None:
+    def __init__(self,config:Config) -> None:
         self.system_prompts  = get_system_prompt( )
         self._messages: list[MessageItem] = []
         #TODO: make model configurable
-        self._model = "gpt-4"
+        self._config = config
+        self._model = config.get_model_name
+
 
     def add_user_message(self, content: str) -> None:
-        self._messages.append(MessageItem(role="user", content=content , token_count=count_tokens(content, model=self._model)))
+        self._messages.append(MessageItem(role="user", content=content , token_count=count_tokens(content )))
 
     def add_assistant_message(self, content: str,tool_calls:list[dict[str,Any]]) -> None:
         self._messages.append(
                 MessageItem(
                     role="assistant", 
                     content=content,
-                    token_count=count_tokens(content, model=self._model),
+                    token_count=count_tokens(content),
                     tool_calls=tool_calls or []
                     )
                 )
@@ -56,7 +59,7 @@ class ContextManager:
         item= MessageItem(
                 role="tool",
                 content=content,
-                token_count=count_tokens(content, model=self._model),
+                token_count=count_tokens(content),
                 tool_call_id=tool_call_id
                 )
 

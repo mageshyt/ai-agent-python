@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 from rich import console
 
 from agent.events import AgentEvent, AgentEventType
+from config.config import Config
 from context.context_manager import ContextManager
 from lib.response import StreamEventType, ToolCall, ToolResultMessage
 from llm.client import LLMProvider
@@ -12,10 +13,10 @@ from tools.registry import create_tool_registry
 
 
 class Agent:
-    def __init__(self ):
-        self.client = LLMProvider()
+    def __init__(self,config:Config) -> None:
+        self.client = LLMProvider(config)
         self.agentId : str = "ask_agent"
-        self.context_manager = ContextManager()
+        self.context_manager = ContextManager(config)
         self.tool_registry = create_tool_registry()
     
     async def run(self,mesage:str)->AsyncGenerator[AgentEvent, None]:
@@ -42,7 +43,6 @@ class Agent:
         response_text = ""
 
         async for event in self.client.send_message(message, tools = tools if tools else None, stream=True):
-            print(f"Received event from LLM client: {event}")
             if event.type == StreamEventType.TEXT_DELTA:
                 content = event.text_delta.content if event.text_delta else ""
                 response_text += content

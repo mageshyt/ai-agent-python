@@ -36,8 +36,9 @@ command_completer = WordCompleter(COMMANDS, pattern=re.compile(r"\/\w*"), senten
 
 
 class CLI:
-    def __init__(self):
+    def __init__(self,config):
         self.agent : Agent | None = None
+        self.config = config
         self.tui = TUI(console)
 
     async def  run_single(self,message:str) -> str | None:
@@ -50,7 +51,7 @@ class CLI:
             str | None: final response from the agent, or None if there was an error
         """
 
-        async with Agent() as agent:
+        async with Agent(self.config) as agent:
             self.agent = agent
             return await self._process_message(message)
 
@@ -132,7 +133,7 @@ class CLI:
             bottom_toolbar=HTML('<b><style bg="#1e1e2e" fg="#89dceb"> / </style></b> for commands  <b>↑↓</b> history  <b>ctrl+c</b> exit'),
         )
 
-        async with Agent() as agent:
+        async with Agent(self.config) as agent:
             self.agent = agent 
             while True:
                 try:
