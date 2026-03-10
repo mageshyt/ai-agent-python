@@ -1,5 +1,5 @@
 import tiktoken
-def get_tokenizer(model:str):
+def get_tokenizer(model:str="gpt-4"):
     try:
         encoding = tiktoken.encoding_for_model(model)
         return encoding.encode
@@ -7,7 +7,7 @@ def get_tokenizer(model:str):
         encoding = tiktoken.get_encoding("cl100k_base")
         return encoding.encode
 
-def count_tokens(text:str, model:str) -> int:
+def count_tokens(text:str, model:str="gpt-4") -> int:
     tokenizer = get_tokenizer(model)
     tokens = tokenizer(text)
 
@@ -19,7 +19,7 @@ def estimate_token_count(text:str) -> int:
 def truncate_text_by_tokens(
     text:str,
     max_tokens:int,
-    model:str,
+    model:str="gpt-4",
     suffix:str = "\n...[truncated]",
     preserve_lines:bool = True
 ) -> str:
@@ -38,7 +38,7 @@ def truncate_text_by_tokens(
         return _truncate_by_chars(text, allowed_tokens, model, suffix)
 
 
-def _truncate_by_lines(text:str, allowed_tokens:int, model:str, suffix:str) -> str:
+def _truncate_by_lines(text:str, allowed_tokens:int, model:str="gpt-4", suffix:str = "\n...[truncated]") -> str:
     lines = text.splitlines()
     truncated_text = ""
     current_tokens = 0
@@ -52,7 +52,7 @@ def _truncate_by_lines(text:str, allowed_tokens:int, model:str, suffix:str) -> s
 
     return truncated_text.rstrip("\n") + suffix
 
-def _truncate_by_chars(text:str, allowed_tokens:int, model:str, suffix:str) -> str:
+def _truncate_by_chars(text:str, allowed_tokens:int, model:str="gpt-4", suffix:str = "\n...[truncated]") -> str:
     low,high = 0, len(text)
 
     while low < high:

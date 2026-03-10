@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import dotenv
+from config.config import Config
 from lib.response import StreamEventType, StreamEvent, TextDelta, TokenUsage, ToolCall, ToolCallDelta, parase_tool_call_arguments
 from openai import AsyncOpenAI , RateLimitError, APIConnectionError
 from typing import Any, AsyncGenerator
@@ -8,16 +9,17 @@ from typing import Any, AsyncGenerator
 dotenv.load_dotenv()
 
 class LLMProvider:
-    def __init__(self) -> None:
+    def __init__(self,config:Config) -> None:
         self._client: AsyncOpenAI | None = None
-        self.model: str = "arcee-ai/trinity-large-preview:free"  # default model, can be overridden by passing a different model name to the constructor
+        self.model: str = config.get_model_name  # default model, can be overridden by passing a different model name to the constructor
         self.max_retries: int = 3  # maximum number of retries for rate limit errors
+        self.config = config
 
     def get_client(self) -> AsyncOpenAI:
         if self._client is None:
             self._client = AsyncOpenAI(
-                api_key=dotenv.get_key(dotenv.find_dotenv(), "API_KEY"),
-                base_url=dotenv.get_key(dotenv.find_dotenv(), "BASE_URL"),
+                api_key=self.config.get_api_key,
+                base_url=self.config.get_base_url,
             )
         return self._client
     
