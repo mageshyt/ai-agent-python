@@ -15,6 +15,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich import box
 
+from config.config import Config
 from lib.paths import get_relative_path
 
 # Syntax highlight theme used for all code blocks
@@ -100,7 +101,7 @@ def get_console():
 
 
 class TUI:
-    def __init__(self, console: Console | None = None):
+    def __init__(self, console: Console | None = None,config: Config | None = None) -> None:
         self.console = console if console else get_console()
         self._assistant_stream_open = False
         self._buffer = "" 
@@ -108,7 +109,8 @@ class TUI:
         self._last_render_pos = 0 
         self._live_display = None  
         self._tool_args_by_call_id : dict[str, dict[str, Any]] = {}
-        self.cwd = Path.cwd()
+        self.config = config
+        self.cwd = config.cwd
 
     def print_welcome(self, title: str, lines: list[str]) -> None:
         body = "\n".join(lines)
@@ -124,49 +126,54 @@ class TUI:
         )
 
     def show_welcome_message(self) -> None:
-        owl_art = """
-  ░██████  ░██     ░██ ░████████   ░██████████ ░█████████    ░██████   ░██       ░██ ░██         
+        owl_art = """  ░██████  ░██     ░██ ░████████   ░██████████ ░█████████    ░██████   ░██       ░██ ░██         
  ░██   ░██  ░██   ░██  ░██    ░██  ░██         ░██     ░██  ░██   ░██  ░██       ░██ ░██         
 ░██          ░██ ░██   ░██    ░██  ░██         ░██     ░██ ░██     ░██ ░██  ░██  ░██ ░██         
 ░██           ░████    ░████████   ░█████████  ░█████████  ░██     ░██ ░██ ░████ ░██ ░██         
 ░██            ░██     ░██     ░██ ░██         ░██   ░██   ░██     ░██ ░██░██ ░██░██ ░██         
  ░██   ░██     ░██     ░██     ░██ ░██         ░██    ░██   ░██   ░██  ░████   ░████ ░██         
-  ░██████      ░██     ░█████████  ░██████████ ░██     ░██   ░██████   ░███     ░███ ░██████████ 
-                                                                                                                                  
-   AI Agent CLI
-        """
-        welcome_md = f"""
-{owl_art}
+  ░██████      ░██     ░█████████  ░██████████ ░██     ░██   ░██████   ░███     ░███ ░██████████"""
 
-# Welcome to the AI Agent CLI!
+        # ASCII banner
+        banner = Text(owl_art, style="bold cyan", justify="left")
+        self.console.print()
+        self.console.print(banner)
+        self.console.print()
 
-Interact with your AI agent in style. Ask questions, give commands, and see responses in real-time.
+        # Info grid: model + cwd
+        info = Table.grid(padding=(0, 2))
+        info.add_column(style="stat.label", no_wrap=True)
+        info.add_column(style="stat.value")
 
----
+        model_name = self.config.get_model_name
+        temperature = self.config.get_temperature
+        cwd = str(self.config.cwd)
 
-## Quick Start
-- Type your message and press Enter to chat with the agent.
-- Use `/help` to see available commands.
-- Use `/exit` or `/quit` to leave the application.
+        info.add_row("Model", f"{model_name}  [dim](temp {temperature})[/dim]")
+        info.add_row("Directory", cwd)
 
-## Features
-- Conversational AI with Markdown and code support
-- Tool access for advanced tasks
-- Session management and checkpoints
-- Live streaming responses
-
-> *Tip: Try asking for code, explanations, or summaries!*
-"""
         self.console.print(
             Panel(
-                Markdown(welcome_md),
-                title=Text("AI Agent CLI", style="highlight"),
-                title_align="left",
+                info,
                 border_style="border",
                 box=box.ROUNDED,
-                padding=(1, 2),
+                padding=(0, 2),
             )
         )
+
+        # Quick-start hint line
+        self.console.print(
+            Text.assemble(
+                ("  Type your message and press ", "dim"),
+                ("Enter", "bold white"),
+                (" to chat  ·  ", "dim"),
+                ("/help", "command"),
+                (" for commands  ·  ", "dim"),
+                ("/exit", "command"),
+                (" to quit", "dim"),
+            )
+        )
+        self.console.print()
     def begin_assistant(self) -> None:
         self.console.print()
         self.console.print(Rule(Text("Assistant", style="assistant")))

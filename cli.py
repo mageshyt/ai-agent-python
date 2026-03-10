@@ -1,6 +1,7 @@
 import re
 from agent.agent import Agent
 from agent.events import AgentEventType
+from config.config import Config
 from ui.tui import TUI, get_console
 from rich.panel import Panel
 from prompt_toolkit import PromptSession
@@ -36,10 +37,10 @@ command_completer = WordCompleter(COMMANDS, pattern=re.compile(r"\/\w*"), senten
 
 
 class CLI:
-    def __init__(self,config):
+    def __init__(self,config:Config):
         self.agent : Agent | None = None
         self.config = config
-        self.tui = TUI(console)
+        self.tui = TUI(console,config)
 
     async def  run_single(self,message:str) -> str | None:
         """ Run a single message through the agent and return the final response.
