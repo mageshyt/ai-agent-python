@@ -1,4 +1,5 @@
 from __future__ import annotations
+import difflib
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -25,6 +26,41 @@ class ToolInvocation:
     cwd: Path
     params: dict[str, Any]
 
+@dataclass
+class FileDiff:
+    path: Path
+    old_content: str
+    new_content: str
+
+    is_new_file: bool = False
+    is_deleted_file: bool = False
+
+
+    def create_diff(self) ->str:
+        old_lines = self.old_content.splitlines(keepends=True)
+        new_lines = self.new_content.splitlines(keepends=True)
+
+        if old_lines and not old_lines[-1].endswith("\n"):
+            # Ensure the last line ends with a newline for proper diff formatting
+            old_lines[-1] += "\n"
+
+        if new_lines and not new_lines[-1].endswith("\n"):
+            new_lines[-1] += "\n"
+
+        old_name = '/dev/null' if self.is_new_file else f"{self.path} (old)"
+        new_name = '/dev/null' if self.is_deleted_file else f"{self.path} (new)"
+        diff = difflib.unified_diff(
+            old_lines,
+            new_lines,
+            fromfile=old_name,
+            tofile=new_name,
+            lineterm=""
+        )
+
+        return "".join(diff)
+
+
+
 
 @dataclass
 class ToolResult:
@@ -33,6 +69,7 @@ class ToolResult:
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     truncated: bool = False
+    diff:FileDiff | None = None
 
     @classmethod
     def error_result(cls, error: str, output: str = "",**kwargs):

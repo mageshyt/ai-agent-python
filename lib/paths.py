@@ -37,6 +37,12 @@ def get_relative_path(path: str, cwd: Path) -> str:
 
     return str(p)
 
+def ensure_parent_directory(path:Path|str):
+    path = Path(path)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
 
 if __name__ == "__main__":
     print(resolve_path("/home/user", "file.txt"))
