@@ -44,7 +44,8 @@ class Agent:
                 if event.type == StreamEventType.TEXT_DELTA:
                     content = event.text_delta.content if event.text_delta else ""
                     response_text += content
-                    yield AgentEvent.text_delta(agent_name=self.session.agentId, content=content)
+                    if content:
+                        yield AgentEvent.text_delta(agent_name=self.session.agentId, content=content)
                 elif event.type == StreamEventType.ERROR:
                     error_message = event.error if event.error else "Unknown error"
                     yield AgentEvent.agent_error(agent_name=self.session.agentId, message=error_message)

@@ -133,7 +133,7 @@ class LLMProvider:
                                     arguments=tool_calls[idx]['arguments']
                                     )
                                 )
-            if delta.content is not None:
+            if delta.content:
                 text_delta = TextDelta(content=delta.content, role=delta.role)
 
                 yield StreamEvent(
