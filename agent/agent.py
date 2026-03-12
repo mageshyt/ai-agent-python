@@ -18,6 +18,7 @@ class Agent:
         self.agentId : str = "ask_agent"
         self.context_manager = ContextManager(config)
         self.tool_registry = create_tool_registry()
+        self.config = config
     
     async def run(self,mesage:str)->AsyncGenerator[AgentEvent, None]:
         yield AgentEvent.agent_started(agent_name=self.agentId , message=mesage)
@@ -32,69 +33,74 @@ class Agent:
 
 
     async def  _agentic_loop(self)->AsyncGenerator[AgentEvent, None]:
-        message = self.context_manager.get_context()
-        tools = self.tool_registry.get_schemas()
-        tool_calls:list[ToolCall] = []
+        max_turns = self.config.max_turns if self.config.max_turns else 10
 
         if (not self.client):
             yield AgentEvent.agent_error(agent_name=self.agentId, message="LLM client is not initialized.")
             return
         
-        response_text = ""
+        for turn in range(max_turns):
+            response_text = ""
 
-        async for event in self.client.send_message(message, tools = tools if tools else None, stream=True):
-            if event.type == StreamEventType.TEXT_DELTA:
-                content = event.text_delta.content if event.text_delta else ""
-                response_text += content
-                yield AgentEvent.text_delta(agent_name=self.agentId, content=content)
-            elif event.type == StreamEventType.ERROR:
-                error_message = event.error if event.error else "Unknown error"
-                yield AgentEvent.agent_error(agent_name=self.agentId, message=error_message)
+            message = self.context_manager.get_context()
+            tools = self.tool_registry.get_schemas()
+            tool_calls:list[ToolCall] = []
+            async for event in self.client.send_message(message, tools = tools if tools else None, stream=True):
+                if event.type == StreamEventType.TEXT_DELTA:
+                    content = event.text_delta.content if event.text_delta else ""
+                    response_text += content
+                    yield AgentEvent.text_delta(agent_name=self.agentId, content=content)
+                elif event.type == StreamEventType.ERROR:
+                    error_message = event.error if event.error else "Unknown error"
+                    yield AgentEvent.agent_error(agent_name=self.agentId, message=error_message)
 
-            elif event.type == StreamEventType.TOOL_CALL_END:
-                # we have a complete tool call, now we can execute it
-                if event.tool_call:
-                    tool_calls.append(event.tool_call)
-    
-        #NOTE: we will add the assistant message to the context manager after the response is complete, so that we have the full response text available for token counting and other processing if needed. This also allows us to yield a text_complete event with the full response text.
-        self.context_manager.add_assistant_message(
-            response_text,
-            [tc.to_dict() for tc in tool_calls] if tool_calls else None,
-        )
-        if response_text:
-            yield AgentEvent.text_complete(agent_name=self.agentId, content=response_text)
+                elif event.type == StreamEventType.TOOL_CALL_END:
+                    # we have a complete tool call, now we can execute it
+                    if event.tool_call:
+                        tool_calls.append(event.tool_call)
         
-        tool_call_result:list[ToolResultMessage] = []
-        # invoke all the tool calls sequentially, we can optimize this later by running them in parallel if they are independent of each other
-        for tool_call in tool_calls:
-                # this event is to display the call in the UI
-                tool_name = tool_call.name if tool_call.name else "unknown_tool"
-                tool_arguments = tool_call.arguments if tool_call.arguments else {}
-                yield AgentEvent.tool_started(
+            #NOTE: we will add the assistant message to the context manager after the response is complete, so that we have the full response text available for token counting and other processing if needed. This also allows us to yield a text_complete event with the full response text.
+            self.context_manager.add_assistant_message(
+                response_text,
+                [tc.to_dict() for tc in tool_calls] if tool_calls else None,
+            )
+            if response_text:
+                yield AgentEvent.text_complete(agent_name=self.agentId, content=response_text)
+ 
+            if not tool_calls:
+                # if there are no tool calls, we can end the agentic loop and return the final response
+                break
+            tool_call_result:list[ToolResultMessage] = []
+            # invoke all the tool calls sequentially, we can optimize this later by running them in parallel if they are independent of each other
+            for tool_call in tool_calls:
+                    # this event is to display the call in the UI
+                    tool_name = tool_call.name if tool_call.name else "unknown_tool"
+                    tool_arguments = tool_call.arguments if tool_call.arguments else {}
+                    yield AgentEvent.tool_started(
+                            call_id=tool_call.id,
+                            tool_name=tool_name,
+                            arguments=tool_arguments
+                    )
+                    result = await self.tool_registry.invoke_tool(tool_name, tool_arguments,self.config.cwd)
+
+                    yield AgentEvent.tool_finished(
                         call_id=tool_call.id,
                         tool_name=tool_name,
-                        arguments=tool_arguments
-                )
-                # TODO: when we do config , resolve the path
-                result = await self.tool_registry.invoke_tool(tool_name, tool_arguments,Path.cwd())
-
-                yield AgentEvent.tool_finished(
-                    call_id=tool_call.id,
-                    tool_name=tool_name,
-                    result=result
-                )
-
-                tool_call_result.append(
-                    ToolResultMessage(
-                        tool_call_id=tool_call.id,
-                        content=result.to_model_output(),
-                        is_error=not result.success
+                        result=result
                     )
-                )
 
-        for tool_result in tool_call_result:
-            # add the tool result to the context manager so that it can be used in subsequent tool calls or in the final response if needed
-            self.context_manager.add_tool_result(tool_result.tool_call_id, tool_result.content)
+
+                    tool_call_result.append(
+                        ToolResultMessage(
+                            tool_call_id=tool_call.id,
+                            content=result.to_model_output(),
+                            is_error=not result.success
+                        )
+                    )
+
+            for tool_result in tool_call_result:
+                # add the tool result to the context manager so that it can be used in subsequent tool calls or in the final response if needed
+                self.context_manager.add_tool_result(tool_result.tool_call_id, tool_result.content)
 
     async def _check_for_agent(self) :
         if not self.agentId:

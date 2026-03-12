@@ -29,7 +29,7 @@ class MessageItem:
         return result
 class ContextManager:
     def __init__(self,config:Config) -> None:
-        self.system_prompts  = get_system_prompt( )
+        self.system_prompts  = get_system_prompt(config)
         self._messages: list[MessageItem] = []
         #TODO: make model configurable
         self._config = config
@@ -39,7 +39,7 @@ class ContextManager:
     def add_user_message(self, content: str) -> None:
         self._messages.append(MessageItem(role="user", content=content , token_count=count_tokens(content )))
 
-    def add_assistant_message(self, content: str,tool_calls:list[dict[str,Any]]) -> None:
+    def add_assistant_message(self, content: str,tool_calls:list[dict[str,Any]] | None) -> None:
         self._messages.append(
                 MessageItem(
                     role="assistant", 
