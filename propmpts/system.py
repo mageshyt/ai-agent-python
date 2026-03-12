@@ -1,22 +1,37 @@
+from config.config import Config
 from tools.base import Tool
-from tools.builtin import get_all_builtin_tools
+from datetime import datetime
+import platform
 
 
-def get_system_prompt() -> str:
+def get_system_prompt(
+    config:Config,
+    tools:list[type[Tool]] = [],
+) -> str:
     parts = []
 
     # Identity and role
     parts.append(_get_identity_section())
+
+    # Environment
+    parts.append(_get_environment_section(config))
+
     # AGENTS.md spec
     parts.append(_get_agents_md_section())
 
     # Security guidelines
     parts.append(_get_security_section())
 
+    # User instructions
+    if config.user_instructions:
+        parts.append(_get_developer_instructions_section(config.user_instructions))
+
+    # Tool usage guidelines
+    if tools:
+        parts.append(_get_tool_guidelines_section(tools=tools))
+
     # Operational guidelines
     parts.append(_get_operational_section())
-    tools = get_all_builtin_tools()
-    parts.append(_get_tool_guidelines_section(tools=tools))
 
     return "\n\n".join(parts)
 
@@ -36,19 +51,19 @@ Your capabilities:
 You are pair programming with the user to help them accomplish their goals. You should be proactive, thorough and focused on delivering high-quality results."""
 
 
-# def _get_environment_section(config: Config) -> str:
-#     """Generate the environment section."""
-#     now = datetime.now()
-#     os_info = f"{platform.system()} {platform.release()}"
-#
-#     return f"""# Environment
-#
-# - **Current Date**: {now.strftime("%A, %B %d, %Y")}
-# - **Operating System**: {os_info}
-# - **Working Directory**: {config.cwd}
-# - **Shell**: {_get_shell_info()}
-#
-# The user has granted you access to run tools in service of their request. Use them when needed."""
+def _get_environment_section(config: Config) -> str:
+    """Generate the environment section."""
+    now = datetime.now()
+    os_info = f"{platform.system()} {platform.release()}"
+
+    return f"""# Environment
+
+- **Current Date**: {now.strftime("%A, %B %d, %Y")}
+- **Operating System**: {os_info}
+- **Working Directory**: {config.cwd}
+- **Shell**: {_get_shell_info()}
+
+The user has granted you access to run tools in service of their request. Use them when needed."""
 
 
 def _get_shell_info() -> str:
@@ -94,7 +109,14 @@ def _get_security_section() -> str:
 
 5. **No arbitrary code execution**: Don't execute code from untrusted sources without user approval.
 
-6. **Security First**: Always apply security best practices. Never introduce code that exposes, logs, or commits secrets, API keys, or other sensitive information."""
+6. **Security First**: Always apply security best practices. Never introduce code that exposes, logs, or commits secrets, API keys, or other sensitive information.
+
+7. **User Approval**: If a requested action seems risky or could have significant consequences, ask the user for explicit approval before proceeding.
+
+8. **Error Handling**: If a tool call fails, analyze the error message carefully to understand the root cause. Do not attempt to work around errors with quick fixes; instead, address the underlying issue to ensure a robust solution.
+
+9. **Respect User Intent**: If a user request seems to conflict with security best practices, politely explain the risks and suggest safer alternatives rather than blindly following the request.
+"""
 
 
 def _get_operational_section() -> str:
@@ -314,4 +336,5 @@ To break out of this loop, please:
 Do not repeat the same action again.
 """
 if __name__ == "__main__":
-    print(get_system_prompt())
+    # print(get_system_prompt())
+    pass
