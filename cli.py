@@ -159,6 +159,6 @@ class CLI:
     def _get_tool_kind(self, tool_name:str) -> str:
         if not self.agent:
             return "unknown"
-        tool_detail = self.agent.tool_registry.get_tool(tool_name)
+        tool_detail = self.agent.session.tool_registry.get_tool(tool_name)
         return tool_detail.kind if tool_detail else "unknown"
 
