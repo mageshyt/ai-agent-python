@@ -1,8 +1,7 @@
 from __future__ import annotations
+import asyncio
 from pathlib import Path
 from typing import AsyncGenerator
-
-from rich import console
 
 from agent.events import AgentEvent, AgentEventType
 from config.config import Config
@@ -34,16 +33,16 @@ class Agent:
 
     async def  _agentic_loop(self)->AsyncGenerator[AgentEvent, None]:
         max_turns = self.config.max_turns if self.config.max_turns else 10
+        tools = self.tool_registry.get_schemas()
 
         if (not self.client):
             yield AgentEvent.agent_error(agent_name=self.agentId, message="LLM client is not initialized.")
             return
         
-        for turn in range(max_turns):
+        for _ in range(max_turns):
             response_text = ""
 
             message = self.context_manager.get_context()
-            tools = self.tool_registry.get_schemas()
             tool_calls:list[ToolCall] = []
             async for event in self.client.send_message(message, tools = tools if tools else None, stream=True):
                 if event.type == StreamEventType.TEXT_DELTA:
@@ -53,6 +52,7 @@ class Agent:
                 elif event.type == StreamEventType.ERROR:
                     error_message = event.error if event.error else "Unknown error"
                     yield AgentEvent.agent_error(agent_name=self.agentId, message=error_message)
+                    break
 
                 elif event.type == StreamEventType.TOOL_CALL_END:
                     # we have a complete tool call, now we can execute it
@@ -70,42 +70,49 @@ class Agent:
             if not tool_calls:
                 # if there are no tool calls, we can end the agentic loop and return the final response
                 break
-            tool_call_result:list[ToolResultMessage] = []
-            # invoke all the tool calls sequentially, we can optimize this later by running them in parallel if they are independent of each other
             for tool_call in tool_calls:
-                    # this event is to display the call in the UI
-                    tool_name = tool_call.name if tool_call.name else "unknown_tool"
-                    tool_arguments = tool_call.arguments if tool_call.arguments else {}
-                    yield AgentEvent.tool_started(
-                            call_id=tool_call.id,
-                            tool_name=tool_name,
-                            arguments=tool_arguments
-                    )
-                    result = await self.tool_registry.invoke_tool(tool_name, tool_arguments,self.config.cwd)
-
-                    yield AgentEvent.tool_finished(
-                        call_id=tool_call.id,
-                        tool_name=tool_name,
-                        result=result
-                    )
+                yield AgentEvent.tool_started(
+                    call_id=tool_call.id,
+                    tool_name=tool_call.name if tool_call.name else "unknown_tool",
+                    arguments=tool_call.arguments if tool_call.arguments else {}
+                )
 
 
-                    tool_call_result.append(
-                        ToolResultMessage(
-                            tool_call_id=tool_call.id,
-                            content=result.to_model_output(),
-                            is_error=not result.success
-                        )
+            invocation_results = await asyncio.gather(
+                *[self._invoke(tc) for tc in tool_calls],
+                return_exceptions=True
+            )
+
+            tool_call_result: list[ToolResultMessage] = []
+            for tc_orig, item in zip(tool_calls, invocation_results):
+                if isinstance(item, BaseException):
+                    tool_name = tc_orig.name if tc_orig.name else "unknown_tool"
+                    error_result = ToolResultMessage(
+                        tool_call_id=tc_orig.id,
+                        content=f"Error: {item}",
+                        is_error=True
                     )
+                    yield AgentEvent.tool_finished(call_id=tc_orig.id, tool_name=tool_name, result=None)
+                    tool_call_result.append(error_result)
+                    continue
+                tc, tool_name, result = item
+                yield AgentEvent.tool_finished(call_id=tc.id, tool_name=tool_name, result=result)
+                tool_call_result.append(
+                    ToolResultMessage(
+                        tool_call_id=tc.id,
+                        content=result.to_model_output(),
+                        is_error=not result.success
+                    )
+                )
 
             for tool_result in tool_call_result:
-                # add the tool result to the context manager so that it can be used in subsequent tool calls or in the final response if needed
                 self.context_manager.add_tool_result(tool_result.tool_call_id, tool_result.content)
 
-    async def _check_for_agent(self) :
-        if not self.agentId:
-            yield AgentEvent.agent_error(agent_name=self.agentId, message="Agent ID is not set. Please set the agent ID before running the agent.")
-        
+    async def _invoke(self,tc: ToolCall):
+        name = tc.name if tc.name else "unknown_tool"
+        args = tc.arguments if tc.arguments else {}
+        result = await self.tool_registry.invoke_tool(name, args, self.config.cwd)
+        return tc, name, result
     async def __aenter__(self) -> Agent:
         return self
 
