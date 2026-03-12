@@ -1,57 +1,53 @@
 from __future__ import annotations
 import asyncio
-from pathlib import Path
 from typing import AsyncGenerator
 
 from agent.events import AgentEvent, AgentEventType
+from agent.session import Session
 from config.config import Config
-from context.context_manager import ContextManager
 from lib.response import StreamEventType, ToolCall, ToolResultMessage
-from llm.client import LLMProvider
-from tools.registry import create_tool_registry
 
 
 class Agent:
     def __init__(self,config:Config) -> None:
-        self.client = LLMProvider(config)
-        self.agentId : str = "ask_agent"
-        self.context_manager = ContextManager(config)
-        self.tool_registry = create_tool_registry()
         self.config = config
+        self.session = Session(config)
     
     async def run(self,mesage:str)->AsyncGenerator[AgentEvent, None]:
-        yield AgentEvent.agent_started(agent_name=self.agentId , message=mesage)
-        self.context_manager.add_user_message(mesage)
+        yield AgentEvent.agent_started(agent_name=self.session.agentId , message=mesage)
+        self.session.context_manager.add_user_message(mesage)
         final_response:str | None = None
         async for event in self._agentic_loop():
             yield event
             if event.type == AgentEventType.TEXT_COMPLETE:
                 final_response = event.data.get("content") if event.data.get("content") else "No content"
 
-        yield AgentEvent.agent_finished(agent_name=self.agentId , response=final_response, usage=None)
+        yield AgentEvent.agent_finished(agent_name=self.session.agentId , response=final_response, usage=None)
 
 
     async def  _agentic_loop(self)->AsyncGenerator[AgentEvent, None]:
-        max_turns = self.config.max_turns if self.config.max_turns else 10
-        tools = self.tool_registry.get_schemas()
 
-        if (not self.client):
-            yield AgentEvent.agent_error(agent_name=self.agentId, message="LLM client is not initialized.")
+        if (not self.session and not self.session.client):
+            yield AgentEvent.agent_error(agent_name=self.session.agentId, message="LLM client is not initialized.")
             return
+
+        max_turns = self.config.max_turns if self.config.max_turns else 10
+        tools = self.session.tool_registry.get_schemas()
         
         for _ in range(max_turns):
+            self.session.increment_turn()
             response_text = ""
 
-            message = self.context_manager.get_context()
+            message = self.session.context_manager.get_context()
             tool_calls:list[ToolCall] = []
-            async for event in self.client.send_message(message, tools = tools if tools else None, stream=True):
+            async for event in self.session.client.send_message(message, tools = tools if tools else None, stream=True):
                 if event.type == StreamEventType.TEXT_DELTA:
                     content = event.text_delta.content if event.text_delta else ""
                     response_text += content
-                    yield AgentEvent.text_delta(agent_name=self.agentId, content=content)
+                    yield AgentEvent.text_delta(agent_name=self.session.agentId, content=content)
                 elif event.type == StreamEventType.ERROR:
                     error_message = event.error if event.error else "Unknown error"
-                    yield AgentEvent.agent_error(agent_name=self.agentId, message=error_message)
+                    yield AgentEvent.agent_error(agent_name=self.session.agentId, message=error_message)
                     break
 
                 elif event.type == StreamEventType.TOOL_CALL_END:
@@ -60,12 +56,12 @@ class Agent:
                         tool_calls.append(event.tool_call)
         
             #NOTE: we will add the assistant message to the context manager after the response is complete, so that we have the full response text available for token counting and other processing if needed. This also allows us to yield a text_complete event with the full response text.
-            self.context_manager.add_assistant_message(
+            self.session.context_manager.add_assistant_message(
                 response_text,
                 [tc.to_dict() for tc in tool_calls] if tool_calls else None,
             )
             if response_text:
-                yield AgentEvent.text_complete(agent_name=self.agentId, content=response_text)
+                yield AgentEvent.text_complete(agent_name=self.session.agentId, content=response_text)
  
             if not tool_calls:
                 # if there are no tool calls, we can end the agentic loop and return the final response
@@ -106,17 +102,17 @@ class Agent:
                 )
 
             for tool_result in tool_call_result:
-                self.context_manager.add_tool_result(tool_result.tool_call_id, tool_result.content)
+                self.session.context_manager.add_tool_result(tool_result.tool_call_id, tool_result.content)
 
     async def _invoke(self,tc: ToolCall):
         name = tc.name if tc.name else "unknown_tool"
         args = tc.arguments if tc.arguments else {}
-        result = await self.tool_registry.invoke_tool(name, args, self.config.cwd)
+        result = await self.session.tool_registry.invoke_tool(name, args, self.config.cwd)
         return tc, name, result
     async def __aenter__(self) -> Agent:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        if self.client:
-            await self.client.close()
-            self.client = None
+        if self.session and self.session.client:
+            await self.session.client.close()
+            self.session.client = None
