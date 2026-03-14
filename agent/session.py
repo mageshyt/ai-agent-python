@@ -12,7 +12,7 @@ class Session:
         self.client = LLMProvider(config)
         self.agentId : str = "ask_agent"
         self.context_manager = ContextManager(config)
-        self.tool_registry = create_tool_registry()
+        self.tool_registry = create_tool_registry(config)
         self.config = config
         self.sessionId = str(uuid.uuid4())
         self.createdAt = datetime.now()
