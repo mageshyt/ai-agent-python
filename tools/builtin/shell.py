@@ -142,9 +142,21 @@ class ShellTool(Tool):
             # kill the process
             if sys.platform == "win32":
                 process.kill()
+                await process.wait()
             else:
-                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-
+                try:
+                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=3.0)
+                except asyncio.TimeoutError:
+                    try:
+                        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                        await process.wait()
+                    except ProcessLookupError:
+                        pass
 
             return ToolResult.error_result(f"Command timed out after {params.timeout} seconds.")
         except Exception as e:
