@@ -1,11 +1,15 @@
 import fnmatch
 import os
 import shlex
+import sys
+import signal
+import asyncio
+
 from pathlib import Path
 from pydantic import BaseModel, Field
+from config.config import Config
 from lib.constants import BLOCKED_COMMANDS
 from tools.base import Tool, ToolConfirmation, ToolInvocation, ToolKind, ToolResult
-import subprocess
 
 class ShellParams(BaseModel):
     command: str = Field(..., description="The shell command to execute")
@@ -83,53 +87,91 @@ class ShellTool(Tool):
 
         env = self._build_environment()
 
+        if sys.platform == "win32":
+            # On Windows, use 'cmd' to execute the command
+            shell_cmd = ["cmd", "/c", command]
+        else:
+            # On Unix-like systems, use 'sh' to execute the command
+            shell_cmd = ["sh", "-c", command]
+
+        process = await asyncio.create_subprocess_exec(
+            *shell_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+            cwd=str(cwd),
+            start_new_session=True
+        )
         try:
-            result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=params.timeout, cwd=cwd, env=env)
+
+            stdout_data,stderr_data = await asyncio.wait_for(process.communicate(), timeout=params.timeout)
+
+            # Decode the output and error streams
+            stdout = stdout_data.decode('utf-8',errors='').rstrip() if stdout_data else ""
+            stderr = stderr_data.decode('utf-8',errors='').rstrip() if stderr_data else ""
+            exit_code = process.returncode
 
             output = ""
 
-            if result.stdout.strip():
-                output += f"STDOUT:\n{result.stdout.strip()}\n"
+            if stdout:
+                output += f"STDOUT:\n{stdout}\n"
+            if stderr:
+                output += f"STDERR:\n{stderr}\n"
 
-            if result.stderr.strip():
-                output += f"STDERR:\n{result.stderr.strip()}\n"
+            if exit_code != 0:
+                output += f"Command exited with code {exit_code}"
 
-            if not output:
-                output = "Command completed successfully."
 
-            if len(output) > 100 * 1024:  # 100 KB limit
-                output = output[:100 * 1024] + "\n[Output truncated due to length]"
+            # compress output if it exceeds the max token limit
+            if len(output) > 100*1024:
+                output = output[:100*1024] + "\n\n[Output truncated due to length]"
 
             return ToolResult(
-                success=result.returncode == 0,
-                output=output.strip(),
-                error=None if result.returncode == 0 else f"Command exited with return code {result.returncode}."
+                    success=exit_code == 0,
+                    output=output,
+                    error = None if exit_code == 0 else stderr,
+                    exit_code = exit_code,
+                    metadata={
+                        "command": command,
+                        "cwd": str(cwd),
+                        "timeout": params.timeout,
+                    }
             )
-        except subprocess.TimeoutExpired:
+
+        except asyncio.TimeoutError:
+            # kill the process
+            if sys.platform == "win32":
+                process.kill()
+            else:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+
+
             return ToolResult.error_result(f"Command timed out after {params.timeout} seconds.")
         except Exception as e:
             return ToolResult.error_result(f"Error executing command: {str(e)}")
 
 
     def _build_environment(self) -> dict[str, str]:
-        env = dict(os.environ)
-        exclude_patterns: list[str] = ["*KEY*", "*TOKEN*", "*SECRET*", "*PASSWORD*", "*PWD*", "*AWS*", "*GCP*", "*AZURE*"]
+        env = os.environ.copy()
+        shell_environment =self.config.shell_environment
 
-        for key in list(env.keys()):
-            if any(fnmatch.fnmatch(key.upper(), p.upper()) for p in exclude_patterns):
-                del env[key]
+        if not shell_environment.ignore_default_excludes:
+            for pattern in shell_environment.exclude_patterns:
+                keys_to_remove = [k for k in env if fnmatch.fnmatch(k.upper(), pattern.upper())]
+                for key in keys_to_remove:
+                    del env[key]
+
+        if shell_environment.set_vars:
+            env.update(shell_environment.set_vars)
+
         return env
-
-    
-
-
 
 if __name__ == "__main__":
     import asyncio
-
-    tool = ShellTool()
+    config = Config()
+    tool = ShellTool(config)
     cwd = Path.cwd()
-    invocation = ToolInvocation(cwd,params={"command": "fdisk"})
+    invocation = ToolInvocation(cwd,params={"command": "ls"})
     result = asyncio.run(tool.execute(invocation))
     print(result)
 

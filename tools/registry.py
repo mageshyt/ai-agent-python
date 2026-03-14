@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any
+from config.config import Config
 from tools import Tool
 import logging
 
@@ -72,10 +73,10 @@ class ToolRegistry:
         return self._tools.get(name)
 
 
-def create_tool_registry() -> ToolRegistry:
+def create_tool_registry(config:Config) -> ToolRegistry:
     registry = ToolRegistry()
     for tool in get_all_builtin_tools():
-        registry.register_tool(tool())
+        registry.register_tool(tool(config))
 
     return registry
 
