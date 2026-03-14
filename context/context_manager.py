@@ -22,8 +22,9 @@ class MessageItem:
         if self.tool_calls:
             result["tool_calls"] = self.tool_calls
 
-        # tool messages always need content; assistant messages include it when non-empty
-        if self.role == "tool" or self.content:
+        # Some providers require assistant messages to include content even when
+        # the turn only contains tool_calls (empty string content).
+        if self.role in {"assistant", "tool"} or self.content:
             result["content"] = self.content
 
         return result
