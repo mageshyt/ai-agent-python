@@ -407,7 +407,29 @@ class TUI:
                     )
             )
 
+        elif tool_name in "list_dir" :
+            entries = metadata.get("entries") if isinstance(metadata, dict) else None
+            path = metadata.get("path") if isinstance(metadata, dict) else None
+            summary = []
 
+            if isinstance(path,str):
+                summary.append(str(get_relative_path(path,self.cwd)))
+            if isinstance(entries, list):
+                summary.append(f"{len(entries)} items")
+            if summary:
+                blocks.append(Text("  ".join(summary), style="muted"))
+
+            output_display = truncate_text_by_tokens(output,self._max_block_tokens)
+            blocks.append(
+                    Syntax(
+                        output_display,
+                        lexer="text",
+                        theme=CODE_THEME,
+                        word_wrap=False,
+                    )
+            )
+
+            
         else:
             body = (error or "") if not success else (output or "")
             if body.strip():
@@ -551,8 +573,8 @@ class TUI:
 
                 value = f"<{line_count} lines, {byte_count} bytes of text>"
 
-
-
+            if isinstance(value , bool):
+                value = str(value)
 
             table.add_row(key, self._format_arg_value(key, value))
         return table
