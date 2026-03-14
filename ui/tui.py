@@ -17,9 +17,10 @@ from rich import box
 
 from config.config import Config
 from lib.paths import get_relative_path
+from tools.base import FileDiff, ToolKind
 
 # Syntax highlight theme used for all code blocks
-CODE_THEME = "one-dark"
+CODE_THEME = "monokai"
 
 # Icon used for all tool call starts
 TOOL_ICON = "⏺"
@@ -236,7 +237,7 @@ class TUI:
         """Display complete text response"""
         pass  # Content already streamed via deltas
     
-    def tool_call_started(self, call_id: str, tool_name: str, arguments: dict[str, Any], tool_kind: str) -> None:
+    def tool_call_started(self, call_id: str, tool_name: str, arguments: dict[str, Any], tool_kind: str | ToolKind) -> None:
         self._tool_args_by_call_id[call_id] = arguments
 
         kind_str = tool_kind.value if hasattr(tool_kind, "value") else str(tool_kind)
@@ -295,6 +296,7 @@ class TUI:
         error: str | None = None,
         metadata: dict[str, Any] | None = None,
         truncated: bool = False,
+        diff: FileDiff | None = None
     ) -> None:
         kind_str = tool_kind.value if tool_kind and hasattr(tool_kind, "value") else str(tool_kind or "")
         border_style = f"tool.{kind_str}" if kind_str and f"tool.{kind_str}" in AGENT_THEME.styles else "tool"
@@ -343,6 +345,32 @@ class TUI:
                     word_wrap=False,
                 )
             )
+        elif tool_name == "write_file" and success and diff is not None:
+            diff_text = diff.to_diff()
+            header = Text()
+            header.append(primary_path or "file", style="file")
+            header.append("  ", style="muted")
+            if diff.is_new_file:
+                new_lines = len(diff.new_content.splitlines())
+                header.append(f"new file, {new_lines} lines", style="success")
+            else:
+                old_lines = len(diff.old_content.splitlines())
+                new_lines = len(diff.new_content.splitlines())
+                delta = new_lines - old_lines
+                sign = "+" if delta >= 0 else ""
+                header.append(f"{old_lines} → {new_lines} lines ({sign}{delta})", style="muted")
+            blocks.append(header)
+            if diff_text.strip():
+                blocks.append(
+                    Syntax(
+                        diff_text,
+                        lexer="diff",
+                        theme=CODE_THEME,
+                        word_wrap=False,
+                    )
+                )
+            else:
+                blocks.append(Text("(no changes)", style="muted"))
         else:
             body = (error or "") if not success else (output or "")
             if body.strip():
@@ -470,6 +498,15 @@ class TUI:
         table.add_column(overflow="fold")
 
         for key, value in self._ordered_args(tool_name, args):
+            if key in { 'content', 'old_string', 'new_string', 'text', 'body'} and isinstance(value, str):
+                line_count = len(value.splitlines()) or 0
+                byte_count = len(value.encode('utf-8'))
+
+                value = f"<{line_count} lines, {byte_count} bytes of text>"
+
+
+
+
             table.add_row(key, self._format_arg_value(key, value))
         return table
 

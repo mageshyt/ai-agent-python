@@ -73,6 +73,7 @@ class CLI:
         final_response = None
         
         async for event in self.agent.run(message):
+            # print("Received event:", event.type, event.data)  # Debugging log
             match event.type:
                 case AgentEventType.AGENT_STARTED:
                     agent_name = event.data.get('agent_name', 'unknown')
@@ -108,7 +109,8 @@ class CLI:
                             output=event.data.get('output', ''),
                             error=event.data.get('error', ''),
                             truncated=event.data.get('truncated', False),
-                            metadata=event.data.get('metadata',None)
+                            metadata=event.data.get('metadata', None),
+                            diff=event.data.get('diff') 
                     )
                     
                 case AgentEventType.AGENT_FINISHED:
