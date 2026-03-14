@@ -3,6 +3,7 @@ from tools.base import Tool, ToolInvocation, ToolKind, ToolResult
 from pydantic import BaseModel, Field
 
 from lib import resolve_path
+from lib.constants import IGNORED_DIRECTORIES
 
 
 class ListDirParams(BaseModel):
@@ -45,23 +46,34 @@ class ListDir(Tool):
         if not items:
             return ToolResult.success_result("Directory is empty")
 
-        list_output = ""
-        if params.recursive:
-            for item in items:
-                if item.is_dir():
-                    list_output += f"{item.name}/\n"
-                    try:
-                        sub_items = sorted(item.iterdir(), key=lambda p: p.name.lower())
-                        if not params.include_hidden:
-                            sub_items = [sub_item for sub_item in sub_items if not sub_item.name.startswith(".")]
-                        for sub_item in sub_items:
-                            list_output += f"  {sub_item.name}/\n" if sub_item.is_dir() else f"  {sub_item.name}\n"
-                    except Exception as e:
-                        list_output += f"  [Error listing contents: {e}]\n"
-                else:
-                    list_output += f"{item.name}\n"
-        else:
-            list_output = "\n".join(f"{item.name}/" if item.is_dir() else item.name for item in items)
+        def build_tree(current_path, include_hidden, recursive, prefix="") -> str:
+            try:
+                paths = sorted(current_path.iterdir(), key=lambda p: p.name.lower())
+            except Exception as e:
+                return f"{prefix}└── [Error reading directory: {e}]\n"
+
+            if not include_hidden:
+                paths = [p for p in paths if not p.name.startswith(".")]
+
+            tree_out = ""
+            for index, item in enumerate(paths):
+                is_last = index == len(paths) - 1
+                if item.name in IGNORED_DIRECTORIES:
+                    connector = "└── " if is_last else "├── "
+                    tree_out += f"{prefix}{connector}{item.name}{'/' if item.is_dir() else ''} [ignored]\n"
+                    continue
+
+                connector = "└── " if is_last else "├── "
+                
+                tree_out += f"{prefix}{connector}{item.name}{'/' if item.is_dir() else ''}\n"
+                
+                if item.is_dir() and recursive:
+                    extension = "    " if is_last else "│   "
+                    tree_out += build_tree(item, include_hidden, recursive, prefix + extension)
+            
+            return tree_out
+
+        list_output = f"{dir_path.name}/\n" + build_tree(dir_path, params.include_hidden, params.recursive)
 
         return ToolResult.success_result(
                 list_output,

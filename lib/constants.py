@@ -1,6 +1,21 @@
 CONFIG_FILE_NAME = "config.toml"
 AGENT_MD_FILE_NAME = "agent.md"
 
+IGNORED_DIRECTORIES = {
+    "node_modules",
+    ".git",
+    ".venv",
+    "venv",
+    "env",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".idea",
+    ".vscode",
+    "dist",
+    "build",
+    "coverage",
+}
 
 BLOCKED_COMMANDS = {
     "rm -rf /",
