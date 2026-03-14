@@ -6,6 +6,7 @@ from agent.events import AgentEvent, AgentEventType
 from agent.session import Session
 from config.config import Config
 from lib.response import StreamEventType, ToolCall, ToolResultMessage
+from tools.base import ToolResult
 
 
 class Agent:
@@ -27,11 +28,13 @@ class Agent:
 
     async def  _agentic_loop(self)->AsyncGenerator[AgentEvent, None]:
 
-        if (not self.session and not self.session.client):
+        if (not self.session or not self.session.client):
             yield AgentEvent.agent_error(agent_name=self.session.agentId, message="LLM client is not initialized.")
             return
 
         max_turns = self.config.max_turns if self.config.max_turns else 10
+        max_consecutive_tool_failures = max(1, self.config.max_consecutive_tool_failures)
+        consecutive_tool_failures = 0
         tools = self.session.tool_registry.get_schemas()
         
         for _ in range(max_turns):
@@ -81,19 +84,24 @@ class Agent:
             )
 
             tool_call_result: list[ToolResultMessage] = []
+            batch_failed_calls = 0
             for tc_orig, item in zip(tool_calls, invocation_results):
                 if isinstance(item, BaseException):
                     tool_name = tc_orig.name if tc_orig.name else "unknown_tool"
+                    result = ToolResult.error_result(str(item))
                     error_result = ToolResultMessage(
                         tool_call_id=tc_orig.id,
-                        content=f"Error: {item}",
+                        content=result.to_model_output(),
                         is_error=True
                     )
-                    yield AgentEvent.tool_finished(call_id=tc_orig.id, tool_name=tool_name, result=None)
+                    yield AgentEvent.tool_finished(call_id=tc_orig.id, tool_name=tool_name, result=result)
                     tool_call_result.append(error_result)
+                    batch_failed_calls += 1
                     continue
                 tc, tool_name, result = item
                 yield AgentEvent.tool_finished(call_id=tc.id, tool_name=tool_name, result=result)
+                if not result.success:
+                    batch_failed_calls += 1
                 tool_call_result.append(
                     ToolResultMessage(
                         tool_call_id=tc.id,
@@ -104,6 +112,21 @@ class Agent:
 
             for tool_result in tool_call_result:
                 self.session.context_manager.add_tool_result(tool_result.tool_call_id, tool_result.content)
+
+            if batch_failed_calls > 0:
+                consecutive_tool_failures += batch_failed_calls
+            else:
+                consecutive_tool_failures = 0
+
+            if consecutive_tool_failures >= max_consecutive_tool_failures:
+                yield AgentEvent.agent_error(
+                    agent_name=self.session.agentId,
+                    message=(
+                        "Stopping execution after repeated tool failures "
+                        f"({consecutive_tool_failures} consecutive failed tool calls)."
+                    ),
+                )
+                break
 
     async def _invoke(self,tc: ToolCall):
         name = tc.name if tc.name else "unknown_tool"
