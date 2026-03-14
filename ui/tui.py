@@ -357,7 +357,7 @@ class TUI:
                     word_wrap=False,
                 )
             )
-        elif tool_name == "write_file" and success and diff is not None:
+        elif tool_name in { "write_file", "edit_file" } and success and diff is not None:
             diff_text = diff.to_diff()
             header = Text()
             header.append(primary_path or "file", style="file")
@@ -492,7 +492,7 @@ class TUI:
         _PREFERRED_ORDER = {
                 'read_file': ['path','offset','limit'],
                 "write_file": ["path", "create_directories", "content"],
-                "edit": ["path", "replace_all", "old_string", "new_string"],
+                "edit_file": ["path", "replace_all", "old_string", "new_string"],
                 "shell": ["command", "timeout", "cwd"],
                 "list_dir": ["path", "include_hidden"],
                 "grep": ["path", "case_insensitive", "pattern"],

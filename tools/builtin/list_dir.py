@@ -23,7 +23,7 @@ class ListDir(Tool):
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = ListDirParams(**invocation.params)
-        dir_path = resolve_path(params.path, invocation.cwd)
+        dir_path = resolve_path(invocation.cwd, params.path)
 
         if not dir_path.exists() or not dir_path.is_dir():
             return ToolResult.error_result(f"Directory not found: {dir_path}")
