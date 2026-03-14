@@ -94,6 +94,7 @@ class AgentEvent:
                   'truncated' : result.truncated,
                   'output' : result.output,
                   'diff' : result.diff,
+                  'exit_code' : result.exit_code,
                   'result': result.__dict__
                 }
         )
