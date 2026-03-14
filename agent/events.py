@@ -93,6 +93,7 @@ class AgentEvent:
                   'metadata': result.metadata ,
                   'truncated' : result.truncated,
                   'output' : result.output,
+                  'diff' : result.diff,
                   'result': result.__dict__
                 }
         )

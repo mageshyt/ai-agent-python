@@ -36,7 +36,7 @@ class FileDiff:
     is_deleted_file: bool = False
 
 
-    def create_diff(self) ->str:
+    def to_diff(self) ->str:
         old_lines = self.old_content.splitlines(keepends=True)
         new_lines = self.new_content.splitlines(keepends=True)
 
@@ -57,7 +57,7 @@ class FileDiff:
             lineterm=""
         )
 
-        return "".join(diff)
+        return "\n".join(diff)
 
 
 
