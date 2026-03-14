@@ -5,7 +5,7 @@ from typing import Any
 
 from rich.console import Console, Group
 from rich.markdown import Markdown
-from rich.syntax import Syntax
+from rich.syntax import Syntax, SyntaxPosition
 from rich.theme import Theme
 from rich.rule import Rule
 from rich.text import Text
@@ -17,6 +17,7 @@ from rich import box
 
 from config.config import Config
 from lib.paths import get_relative_path
+from lib.text import truncate_text_by_tokens
 from tools.base import FileDiff, ToolKind
 
 # Syntax highlight theme used for all code blocks
@@ -112,6 +113,7 @@ class TUI:
         self._tool_args_by_call_id : dict[str, dict[str, Any]] = {}
         self.config = config
         self.cwd = config.cwd
+        self._max_block_tokens = 2000
 
     def print_welcome(self, title: str, lines: list[str]) -> None:
         body = "\n".join(lines)
@@ -308,7 +310,8 @@ class TUI:
         error: str | None = None,
         metadata: dict[str, Any] | None = None,
         truncated: bool = False,
-        diff: FileDiff | None = None
+        diff: FileDiff | None = None,
+        exit_code: int | None = None,
     ) -> None:
         kind_str = tool_kind.value if tool_kind and hasattr(tool_kind, "value") else str(tool_kind or "")
         border_style = f"tool.{kind_str}" if kind_str and f"tool.{kind_str}" in AGENT_THEME.styles else "tool"
@@ -321,6 +324,7 @@ class TUI:
             ("  ", "muted"),
             (f"#{call_id[:8]}", "muted"),
         )
+        args = self._tool_args_by_call_id.get(call_id, {})
 
         primary_path: str | None = None
         if isinstance(metadata, dict) and isinstance(metadata.get("path"), str):
@@ -383,6 +387,27 @@ class TUI:
                 )
             else:
                 blocks.append(Text("(no changes)", style="muted"))
+        
+        elif tool_name == "shell":
+            command = args.get("command", "")
+
+            if command:
+                blocks.append(Text(f'$ {command}', style="muted"))
+
+            if exit_code is not None:
+                blocks.append(Text(f"Exit code: {exit_code}", style="muted"))
+            
+            display_output = truncate_text_by_tokens(output,self._max_block_tokens)
+            blocks.append(
+                    Syntax(
+                        display_output,
+                        lexer="text",
+                        theme=CODE_THEME,
+                        word_wrap=False,
+                    )
+            )
+
+
         else:
             body = (error or "") if not success else (output or "")
             if body.strip():
