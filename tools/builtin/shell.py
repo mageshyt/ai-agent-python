@@ -1,6 +1,7 @@
 import fnmatch
 import os
 import shlex
+import shutil
 import sys
 import signal
 import asyncio
@@ -44,8 +45,9 @@ class ShellTool(Tool):
     kind = ToolKind.SHELL
     description = (
         "Execute a shell command and return the output. "
-        "Use this tool to run commands in the terminal and get their output. "
-        "Be cautious when using this tool, as it can execute any command on the system."
+        "Use this tool to interact with the system, run scripts, or compile code. "
+        "CRITICAL: DO NOT use this tool to generate conversational responses, reply to the user via 'echo', or format text. "
+        "Speak directly to the user in your message instead of using shell commands to output text."
         )
     schema = ShellParams
 
@@ -92,7 +94,8 @@ class ShellTool(Tool):
             shell_cmd = ["cmd", "/c", command]
         else:
             # On Unix-like systems, use 'sh' to execute the command
-            shell_cmd = ["sh", "-c", command]
+            shell_executable = shutil.which("bash") or shutil.which("sh") or "/bin/sh"
+            shell_cmd = [shell_executable, "-c", command]
 
         process = await asyncio.create_subprocess_exec(
             *shell_cmd,
