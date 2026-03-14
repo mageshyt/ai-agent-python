@@ -3,6 +3,7 @@ import asyncio
 from pydantic import BaseModel, Field
 
 from lib import MAX_FILE_SIZE,check_file_size, is_binary_file, resolve_path ,  count_tokens, truncate_text_by_tokens
+from lib.constants import BLOCKED_FILES
 from tools import Tool, ToolInvocation, ToolKind, ToolResult
 
 
@@ -37,6 +38,11 @@ class ReadFileTool(Tool):
 
         if not path.is_file():
             return ToolResult.error_result(f"Path is not a file: {path.name}")
+
+
+        # check if the file is in the blocked list
+        if any(path.match(pattern) for pattern in BLOCKED_FILES):
+            return ToolResult.error_result(f"Access to this file is blocked: {path.name}")
 
         # check the file size , whether it exceeds the limit
         if not check_file_size(path):
@@ -80,14 +86,14 @@ class ReadFileTool(Tool):
 
             output = "\n".join(formated_lines)
 
-            token_cont = count_tokens(output, model="gpt-4") # TODO: make the model configurable
+            token_cont = count_tokens(output)
 
             # if the output exceeds the token limit, we need to truncate it
             if token_cont > self.MAX_OUTPUT_TOKENS:
                 output = truncate_text_by_tokens(
                     output,
                     max_tokens=self.MAX_OUTPUT_TOKENS,
-                    model="gpt-4", # TODO: make the model configurable
+                    model="gpt-4", # NOTE: we set default model to gpt-4 for token counting and truncation
                     suffix=f"\n...[output truncated {token_cont} tokens, showing first {self.MAX_OUTPUT_TOKENS} tokens]",
                     preserve_lines=False, # for file content, we can truncate by characters to better utilize the token limit
                 )

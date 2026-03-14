@@ -36,3 +36,12 @@ BLOCKED_COMMANDS = {
     "init 0",
     "init 6",
 }
+
+BLOCKED_FILES = [
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "credentials.json",
+    "secrets.*"
+]
