@@ -199,8 +199,19 @@ class TUI:
 
     def stream_assistant_delta(self, content: str) -> None:
         self._buffer += content
-        if self._live_display is not None:
-            self._live_display.update(Markdown(self._buffer))
+        if not self._assistant_stream_open:
+            return
+
+        if self._live_display is None:
+            self._live_display = Live(
+                Markdown(self._buffer) if self._buffer else Spinner("dots", text="[thinking]Thinking...[/]", style="thinking"),
+                console=self.console,
+                refresh_per_second=15,
+                vertical_overflow="visible",
+            )
+            self._live_display.start()
+
+        self._live_display.update(Markdown(self._buffer))
     
     def assistant_thinking(self, message: str = "Thinking") -> None:
         if self._live_display is not None:
@@ -223,6 +234,7 @@ class TUI:
         if self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
+        self.console.print(Rule(style="border"))
         self.console.print()
             
     
@@ -419,6 +431,16 @@ class TUI:
             self._live_display = None
 
         self.console.print(result_panel)
+
+        # Resume assistant streaming area so subsequent text deltas remain visible.
+        if self._assistant_stream_open and self._live_display is None:
+            self._live_display = Live(
+                Markdown(self._buffer) if self._buffer else Spinner("dots", text="[thinking]Thinking...[/]", style="thinking"),
+                console=self.console,
+                refresh_per_second=15,
+                vertical_overflow="visible",
+            )
+            self._live_display.start()
 
     def subagent_started(self, subagent_name: str) -> None:
         """Display when a subagent is invoked"""

@@ -30,6 +30,7 @@ def get_system_prompt(
     if tools:
         parts.append(_get_tool_guidelines_section(tools=tools))
 
+    parts.append(create_loop_breaker_prompt("The agent is repeating the same actions or responses without making progress towards the user's goal."))
     # Operational guidelines
     parts.append(_get_operational_section())
 
