@@ -110,7 +110,8 @@ class CLI:
                             error=event.data.get('error', ''),
                             truncated=event.data.get('truncated', False),
                             metadata=event.data.get('metadata', None),
-                            diff=event.data.get('diff') 
+                            diff=event.data.get('diff'),
+                            exit_code=event.data.get('exit_code', None)
                     )
                     
                 case AgentEventType.AGENT_FINISHED:
