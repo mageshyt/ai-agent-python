@@ -46,6 +46,9 @@ class ShellTool(Tool):
     description = (
         "Execute a shell command and return the output. "
         "Use this tool to interact with the system, run scripts, or compile code. "
+        "Before executing a command, ensure that it is safe and does not contain any blocked patterns. "
+        "Note: Only use this tool if there is no other tool available that can accomplish the task, and always validate the command to prevent security risks. "
+        "Execute a shell command. Do NOT use this tool for docker commands. Use the 'docker' tool instead."
         "CRITICAL: DO NOT use this tool to generate conversational responses, reply to the user via 'echo', or format text. "
         "Speak directly to the user in your message instead of using shell commands to output text."
         )
