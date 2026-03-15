@@ -269,6 +269,16 @@ class TUI:
     def tool_call_started(self, call_id: str, tool_name: str, arguments: dict[str, Any], tool_kind: str | ToolKind) -> None:
         self._tool_args_by_call_id[call_id] = arguments
 
+        if self._live_display is not None:
+            self._live_display.stop()
+            self._live_display = None
+
+        if self._buffer.strip():
+            if self._use_markdown:
+                self.console.print(Markdown(self._buffer.strip()))
+            else:
+                self.console.print(Text(self._buffer.strip(), style="dim white"))
+
         # Clear buffered assistant text when entering a tool call so previous
         # planning text is not re-rendered after each tool result.
         self._buffer = ""
@@ -303,10 +313,6 @@ class TUI:
             box=box.ROUNDED,
             padding=(0, 2),
         )
-
-        if self._live_display is not None:
-            self._live_display.stop()
-            self._live_display = None
 
         self.console.print(tool_panel)
 
