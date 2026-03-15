@@ -1,4 +1,33 @@
-# TODO
+# AI Agent Development
+
+## Tasks
+- [x] Implement Docker tool
+- [ ] Add comprehensive error handling
+- [ ] Create unit tests for all tools
+- [ ] Add documentation for each tool
+
+## Tool Development Backlog
+
+### Development Tools
+- [ ] Git tool - Git operations (commit, push, status, etc.)
+- [ ] Code analysis tool - Code quality analysis (linting, type checking)
+- [ ] Build tool - Build system integration
+- [ ] Test runner tool - Automated testing
+
+### Productivity Tools
+- [ ] Web search tool - Web search and information retrieval
+- [ ] Documentation tool - Generate and manage documentation
+- [ ] Dependency manager tool - Package management
+
+### Advanced Tools
+- [ ] Docker tool - Docker container management (COMPLETED)
+- [ ] API tool - HTTP client for API interactions
+- [ ] Database tool - Database operations
+
+### Utility Tools
+- [ ] Archive tool - Archive creation and extraction
+- [ ] Checksum tool - File integrity verification
+- [ ] Diff tool - File comparison
 
 ## Context Window Management (context_manager.py)
 
