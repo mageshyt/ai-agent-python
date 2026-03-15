@@ -188,6 +188,7 @@ class TUI:
             console=self.console,
             refresh_per_second=15,
             vertical_overflow="visible",
+            transient=True,
         )
         self._live_display.start()
 
@@ -210,6 +211,7 @@ class TUI:
                 console=self.console,
                 refresh_per_second=15,
                 vertical_overflow="visible",
+                transient=True,
             )
             self._live_display.start()
 
@@ -248,11 +250,28 @@ class TUI:
         self.console.print(f"[error]✗ Error:[/] {message}")
     
     def text_complete(self, content: str) -> None:
-        """Display complete text response"""
-        pass  # Content already streamed via deltas
+        """Persist the final assistant response for non-tool turns."""
+        if self._live_display is not None:
+            self._live_display.stop()
+            self._live_display = None
+
+        if not content.strip():
+            self._buffer = ""
+            return
+
+        if self._use_markdown:
+            self.console.print(Markdown(content))
+        else:
+            self.console.print(Text(content, style="dim white"))
+
+        self._buffer = ""
     
     def tool_call_started(self, call_id: str, tool_name: str, arguments: dict[str, Any], tool_kind: str | ToolKind) -> None:
         self._tool_args_by_call_id[call_id] = arguments
+
+        # Clear buffered assistant text when entering a tool call so previous
+        # planning text is not re-rendered after each tool result.
+        self._buffer = ""
 
         kind_str = tool_kind.value if hasattr(tool_kind, "value") else str(tool_kind)
         border_style = f"tool.{kind_str}" if f"tool.{kind_str}" in AGENT_THEME.styles else "tool"
@@ -481,11 +500,13 @@ class TUI:
 
         # Resume assistant streaming area so subsequent text deltas remain visible.
         if self._assistant_stream_open and self._live_display is None:
+            self._buffer = ""
             self._live_display = Live(
-                Markdown(self._buffer) if self._buffer else Spinner("dots", text="[thinking]Thinking...[/]", style="thinking"),
+                Spinner("dots", text="[thinking]Thinking...[/]", style="thinking"),
                 console=self.console,
                 refresh_per_second=15,
                 vertical_overflow="visible",
+                transient=True,
             )
             self._live_display.start()
 

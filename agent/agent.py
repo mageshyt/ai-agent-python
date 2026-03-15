@@ -64,7 +64,9 @@ class Agent:
                 response_text,
                 [tc.to_dict() for tc in tool_calls] if tool_calls else None,
             )
-            if response_text:
+
+            # Only finalize visible assistant text for non-tool turns.
+            if response_text and not tool_calls:
                 yield AgentEvent.text_complete(agent_name=self.session.agentId, content=response_text)
  
             if not tool_calls:
