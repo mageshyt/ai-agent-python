@@ -2,8 +2,7 @@ from config.config import Config
 from tools.base import Tool, ToolInvocation, ToolKind, ToolResult
 from pydantic import BaseModel, Field
 
-from lib import resolve_path
-from lib.constants import IGNORED_DIRECTORIES
+from lib import resolve_path , IGNORED_DIRECTORIES
 
 
 class ListDirParams(BaseModel):
@@ -22,7 +21,7 @@ class ListDirParams(BaseModel):
     )
 
 
-class ListDir(Tool):
+class ListDirTool(Tool):
     name = "list_dir"
     description = "List the contents of a directory"
     kind = ToolKind.FILE_SYSTEM
@@ -95,7 +94,7 @@ class ListDir(Tool):
 if __name__ == "__main__":
     import asyncio
     config = Config()
-    tool = ListDir(config)
+    tool = ListDirTool(config)
     invocation = ToolInvocation(cwd=resolve_path(".",''), params={"path": ".", "include_hidden": False, "recursive": True})
     result = asyncio.run(tool.execute(invocation))
     print(result.to_model_output())
