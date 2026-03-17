@@ -71,9 +71,11 @@ class GrepTool(Tool):
             for idx, line in enumerate(lines):
                 if pattern.search(line):
                     if not is_file_matched:
-                        relative_path = file.relative_to(invocation.cwd)
-                        matches.append(f"{relative_path}:{idx+1}:{line}")
                         is_file_matched = True
+                        files_matched += 1
+                    relative_path = file.relative_to(invocation.cwd)
+                    matches.append(f"{relative_path}:{idx+1}:{line}")
+                    
             if is_file_matched:
                 matches.append("")
 
