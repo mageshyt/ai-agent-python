@@ -1,0 +1,13 @@
+services:
+  agent:
+    build: .
+    container_name: ai_agent_dev
+    volumes:
+      - .:/app
+    # These two settings are critical for interactive terminal access
+    stdin_open: true
+    tty: true
+    # Provide necessary environment variables for LLM usage
+    env_file:
+      - .env
+    command: bash

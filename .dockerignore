@@ -1,0 +1,21 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+.python-version
+
+# Environment variables
+.env
+
+# IDEs and Editors
+.vscode/
+
+# AI Agents and Tools
+.cyberowl-agent/
+.ruff_cache/
