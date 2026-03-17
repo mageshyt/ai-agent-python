@@ -2,6 +2,7 @@ import asyncio
 
 from pydantic import BaseModel, Field
 
+from config.config import Config
 from lib import MAX_FILE_SIZE,check_file_size, is_binary_file, resolve_path ,  count_tokens, truncate_text_by_tokens
 from lib.constants import BLOCKED_FILES
 from tools import Tool, ToolInvocation, ToolKind, ToolResult
@@ -122,8 +123,8 @@ class ReadFileTool(Tool):
 
 if __name__ == "__main__":
     import os
-
-    read_tool = ReadFileTool()
+    config = Config()
+    read_tool = ReadFileTool(config)
     print(f"Current working directory: {os.getcwd()}")
     invocation = ToolInvocation(
         cwd=os.getcwd(), params={"path": "./tools/base.py", "offset": 1,"limit": 100}

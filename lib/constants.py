@@ -45,3 +45,5 @@ BLOCKED_FILES = [
     "credentials.json",
     "secrets.*"
 ]
+
+MAX_FILE = 1000  # maximum number of files to read in grep tool to prevent excessive memory usage
