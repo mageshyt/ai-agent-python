@@ -432,7 +432,7 @@ class TUI:
                     )
             )
 
-        elif tool_name in "list_dir" and success:
+        elif tool_name == "list_dir" and success:
             entries = metadata.get("entries") if isinstance(metadata, dict) else None
             path = metadata.get("path") if isinstance(metadata, dict) else None
             summary = []
@@ -445,13 +445,41 @@ class TUI:
                 blocks.append(Text("  ".join(summary), style="muted"))
 
             output_display = truncate_text_by_tokens(output,self._max_block_tokens)
+            
+            # Custom formatting for list_dir output
+            list_text = Text()
+            import re
+            for line in output_display.splitlines():
+                if not line:
+                    continue
+                
+                # Match tree prefixes (e.g. "├── ", "│   ", "└── ")
+                tree_match = re.match(r"^([│ \t├─└]+)(.*)$", line)
+                if tree_match:
+                    prefix, name = tree_match.groups()
+                    list_text.append(prefix, style="dim")
+                    
+                    if "[ignored]" in name:
+                        list_text.append(name, style="muted")
+                    elif name.endswith("/"):
+                        list_text.append(name, style="path")
+                    else:
+                        list_text.append(name, style="file")
+                    list_text.append("\n")
+                else:
+                    # Top level directory name
+                    if line.endswith("/"):
+                        list_text.append(line + "\n", style="path")
+                    else:
+                        list_text.append(line + "\n", style="file")
+            
             blocks.append(
-                    Syntax(
-                        output_display,
-                        lexer="text",
-                        theme=CODE_THEME,
-                        word_wrap=False,
-                    )
+                Panel(
+                    list_text,
+                    border_style="border",
+                    box=box.MINIMAL,
+                    padding=(0, 1)
+                )
             )
 
         elif tool_name == "grep" and success:
@@ -466,13 +494,33 @@ class TUI:
                 blocks.append(Text("  ".join(summary), style="muted"))
 
             output_display = truncate_text_by_tokens(output,self._max_block_tokens)
+            
+            # Custom formatting for grep output
+            grep_text = Text()
+            for line in output_display.splitlines():
+                if not line.strip():
+                    grep_text.append("\n")
+                    continue
+                    
+                parts = line.split(":", 2)
+                if len(parts) >= 3 and parts[1].isdigit():
+                    file_path, line_num, content = parts[0], parts[1], parts[2]
+                    grep_text.append(file_path, style="path")
+                    grep_text.append(":", style="dim")
+                    grep_text.append(line_num, style="success")
+                    grep_text.append(":", style="dim")
+                    # add space so content doesn't crash into colon
+                    grep_text.append(f" {content}\n", style="dim white")
+                else:
+                    grep_text.append(line + "\n", style="dim white")
+                    
             blocks.append(
-                    Syntax(
-                        output_display,
-                        lexer="text",
-                        theme=CODE_THEME,
-                        word_wrap=False,
-                    )
+                Panel(
+                    grep_text,
+                    border_style="border",
+                    box=box.MINIMAL,
+                    padding=(0, 1)
+                )
             )
         else:
             body = (error or "") if not success else (output or "")
