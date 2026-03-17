@@ -432,7 +432,7 @@ class TUI:
                     )
             )
 
-        elif tool_name in "list_dir" :
+        elif tool_name in "list_dir" and success:
             entries = metadata.get("entries") if isinstance(metadata, dict) else None
             path = metadata.get("path") if isinstance(metadata, dict) else None
             summary = []
@@ -454,7 +454,26 @@ class TUI:
                     )
             )
 
-            
+        elif tool_name == "grep" and success:
+            files_searched = metadata.get("files_searched") if isinstance(metadata, dict) else None
+            files_matched = metadata.get("files_matched") if isinstance(metadata, dict) else None
+            summary = []
+            if files_searched is not None:
+                summary.append(f"{files_searched} files searched")
+            if files_matched is not None:
+                summary.append(f"{files_matched} matched")
+            if summary:
+                blocks.append(Text("  ".join(summary), style="muted"))
+
+            output_display = truncate_text_by_tokens(output,self._max_block_tokens)
+            blocks.append(
+                    Syntax(
+                        output_display,
+                        lexer="text",
+                        theme=CODE_THEME,
+                        word_wrap=False,
+                    )
+            )
         else:
             body = (error or "") if not success else (output or "")
             if body.strip():
