@@ -31,7 +31,7 @@ class GrepTool(Tool):
             "Search for a pattern in files using the grep command. "
             "You can specify the pattern, the file or directory to search in, whether the search should be case-sensitive, and any additional options for the grep command."
     )
-    king = ToolKind.READ
+    kind = ToolKind.READ
     schema = GrepParams
 
 
@@ -82,13 +82,18 @@ class GrepTool(Tool):
         if not matches:
             return ToolResult.success_result(f"No matches found for pattern, '{params.pattern}' in path '{path}'.")
 
+        if len(matches) >= MAX_FILE:
+            matches.append(f"Output truncated to {MAX_FILE} matches to prevent excessive memory usage.")
+
         return ToolResult.success_result(
                 "\n".join(matches),
                 metadata={
                     "path": str(path),
                     "files_searched": len(files),
                     "files_matched": files_matched,
-                    "matches" : matches
+                    "matches" : matches,
+                    "pattern": params.pattern,
+                    "truncated": len(matches) >= MAX_FILE
                 }
         )
 
