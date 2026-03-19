@@ -15,6 +15,7 @@ def get_all_builtin_tools() -> list[type]:
     from tools.builtin.shell import ShellTool
     from tools.builtin.web_scrap import WebScrapTool
     from tools.builtin.write_file import WriteFile
+    from tools.builtin.todo import TodoTool
 
     return [
         ReadFileTool,
@@ -25,5 +26,6 @@ def get_all_builtin_tools() -> list[type]:
         ShellTool,
         GlobTool,
         WebSearchTool,
-        WebScrapTool
+        WebScrapTool,
+        TodoTool
     ]
