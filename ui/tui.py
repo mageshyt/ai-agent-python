@@ -582,6 +582,45 @@ class TUI:
             else:
                 blocks.append(Text("No results found.", style="muted"))
 
+        elif tool_name == "web_scrap" and success:
+            url = metadata.get("url", args.get("url", "")) if isinstance(metadata, dict) else args.get("url", "")
+            status_code = metadata.get("status_code") if isinstance(metadata, dict) else None
+            
+            header = Text()
+            if url:
+                header.append("URL: ", style="muted")
+                header.append(f"{url}  ", style="path")
+            if status_code is not None:
+                header.append("Status: ", style="muted")
+                status_color = "success" if 200 <= status_code < 300 else "error"
+                icon = "✓" if 200 <= status_code < 300 else "✗"
+                header.append(f"{status_code} {icon}  ", style=status_color)
+                
+            out_len = len(output)
+            header.append("Length: ", style="muted")
+            header.append(f"{out_len} chars  ", style="dim white")
+
+            if truncated:
+                header.append("(Truncated)", style="warning")
+
+            blocks.append(header)
+                
+            output_display = truncate_text_by_tokens(output, self._max_block_tokens)
+            
+            blocks.append(
+                Panel(
+                    Syntax(
+                        output_display,
+                        lexer="html",
+                        theme=CODE_THEME,
+                        word_wrap=False,
+                    ),
+                    border_style="border",
+                    box=box.MINIMAL,
+                    padding=(0, 1)
+                )
+            )
+
         else:
             body = (error or "") if not success else (output or "")
             if body.strip():
