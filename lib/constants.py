@@ -47,3 +47,4 @@ BLOCKED_FILES = [
 ]
 
 MAX_FILE = 1000  # maximum number of files to read in grep tool to prevent excessive memory usage
+MAX_CONTENT_SIZE = 1024 * 100 # 100kb - maximum content size to read from files or web responses to prevent excessive memory usage
