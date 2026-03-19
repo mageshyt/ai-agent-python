@@ -621,6 +621,42 @@ class TUI:
                 )
             )
 
+        elif tool_name == "todos" and success:
+            action = args.get("action", "")
+
+            summary = []
+            if action:
+                summary.append(f"Action: {action.capitalize()}")
+            if summary:
+                blocks.append(Text("  ".join(summary), style="muted"))
+
+            output_display = truncate_text_by_tokens(output, self._max_block_tokens)
+
+            if action == "list" and "No todo items found" not in output_display:
+                todo_text = Text()
+                for line in output_display.splitlines():
+                    if not line.strip():
+                        continue
+                    if line.startswith("✓"):
+                        todo_text.append("[✓] ", style="success")
+                        todo_text.append(line[2:] + "\n", style="bold white")
+                    elif line.startswith("✗"):
+                        todo_text.append("[✗] ", style="warning")
+                        todo_text.append(line[2:] + "\n", style="dim white")
+                    else:
+                        todo_text.append(line + "\n", style="dim white")
+
+                blocks.append(
+                    Panel(
+                        todo_text,
+                        border_style="border",
+                        box=box.MINIMAL,
+                        padding=(0, 1)
+                    )
+                )
+            else:
+                blocks.append(Text(output_display, style="dim white"))
+
         else:
             body = (error or "") if not success else (output or "")
             if body.strip():
