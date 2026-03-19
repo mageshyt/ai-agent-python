@@ -522,6 +522,66 @@ class TUI:
                     padding=(0, 1)
                 )
             )
+
+        elif tool_name == "glob" and success:
+            files_matched = metadata.get("files_matched", 0) if isinstance(metadata, dict) else 0
+            pattern = metadata.get("pattern", "") if isinstance(metadata, dict) else ""
+            
+            summary = []
+            if pattern:
+                summary.append(f"Pattern: '{pattern}'")
+            if files_matched is not None:
+                summary.append(f"({files_matched} matches)")
+            
+            if summary:
+                blocks.append(Text("  ".join(summary), style="muted"))
+                
+            output_display = truncate_text_by_tokens(output, self._max_block_tokens)
+            
+            glob_text = Text()
+            for line in output_display.splitlines():
+                if not line.strip():
+                    continue
+                if line.startswith("Output truncated"):
+                    glob_text.append(f"\n{line}\n", style="warning")
+                else:
+                    glob_text.append("• ", style="dim")
+                    glob_text.append(f"{line}\n", style="file")
+                    
+            blocks.append(
+                Panel(
+                    glob_text,
+                    border_style="border",
+                    box=box.MINIMAL,
+                    padding=(0, 1)
+                )
+            )
+            
+        elif tool_name == "web_search" and success:
+            query = metadata.get("query", "") if isinstance(metadata, dict) else ""
+            results = metadata.get("results", []) if isinstance(metadata, dict) else []
+            
+            if query:
+                blocks.append(Text(f"Search query: {query}", style="muted"))
+                
+            if results:
+                for i, res in enumerate(results):
+                    title = res.get("title", "No Title")
+                    url = res.get("url", "")
+                    desc = res.get("description", "")
+                    
+                    item = Text()
+                    item.append(f"{i+1}. ", style="bold bright_blue")
+                    item.append(f"{title}\n", style="bold white")
+                    item.append(f"   {url}\n", style="cyan")
+                    
+                    clean_desc = " ".join(desc.split())
+                    item.append(f"   {clean_desc}", style="dim white")
+                    
+                    blocks.append(item)
+            else:
+                blocks.append(Text("No results found.", style="muted"))
+
         else:
             body = (error or "") if not success else (output or "")
             if body.strip():

@@ -1,7 +1,10 @@
 __all__ = ["get_all_builtin_tools"]
 
 
+
+
 def get_all_builtin_tools() -> list[type]:
+    from tools.builtin.web_search import WebSearchTool
     from tools.builtin.edit_file import EditTool
     from tools.builtin.glob import GlobTool
     from tools.builtin.grep import GrepTool
@@ -18,4 +21,5 @@ def get_all_builtin_tools() -> list[type]:
         GrepTool,
         ShellTool,
         GlobTool,
+        WebSearchTool
     ]
