@@ -10,7 +10,7 @@ from tools.registry import create_tool_registry
 class Session:
     def __init__(self,config:Config):
         self.client = LLMProvider(config)
-        self.agentId : str = "ask_agent"
+        self.agentId : str = "agent_black"
         self.context_manager = ContextManager(config)
         self.tool_registry = create_tool_registry(config)
         self.config = config
