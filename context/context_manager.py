@@ -6,6 +6,8 @@ from config.loader import get_data_dir
 from lib.text import count_tokens
 from propmpts.system import get_system_prompt
 from tools.base import Tool
+import json
+import time
 
 @dataclass
 class MessageItem:
@@ -74,10 +76,55 @@ class ContextManager:
 
     def _load_memory(self) -> str | None:
         data_dir = get_data_dir()
-        memory_file = data_dir / "user_memory.json"
+        long_memory_file = data_dir / "user_memory.json"
+        short_memory_file = data_dir / "short_term_memory.json"
 
-        if not memory_file.is_file():
+        long_entries: dict[str, Any] = {}
+        short_entries: dict[str, Any] = {}
+
+        if long_memory_file.is_file():
+            try:
+                raw_long = long_memory_file.read_text(encoding="utf-8")
+                parsed_long = json.loads(raw_long) if raw_long.strip() else {}
+                if isinstance(parsed_long, dict):
+                    long_entries = parsed_long
+            except (OSError, ValueError, json.JSONDecodeError):
+                long_entries = {}
+
+        if short_memory_file.is_file():
+            try:
+                raw_short = short_memory_file.read_text(encoding="utf-8")
+                parsed_short = json.loads(raw_short) if raw_short.strip() else {}
+                if isinstance(parsed_short, dict):
+                    now = time.time()
+                    for key, raw_entry in parsed_short.items():
+                        if isinstance(raw_entry, dict):
+                            value = raw_entry.get("value")
+                            expires_at = raw_entry.get("expires_at")
+                            if value is None:
+                                continue
+                            if expires_at is not None:
+                                try:
+                                    expires_at = float(expires_at)
+                                except (TypeError, ValueError):
+                                    expires_at = None
+                            if expires_at is not None and expires_at <= now:
+                                continue
+                            short_entries[key] = {"value": value, "expires_at": expires_at}
+                        else:
+                            short_entries[key] = {"value": raw_entry, "expires_at": None}
+            except (OSError, ValueError, json.JSONDecodeError):
+                short_entries = {}
+
+        if not long_entries and not short_entries:
             return None
 
-        return memory_file.read_text()
+        return json.dumps(
+            {
+                "long": long_entries,
+                "short": short_entries,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
 
