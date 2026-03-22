@@ -11,8 +11,8 @@ class Session:
     def __init__(self,config:Config):
         self.client = LLMProvider(config)
         self.agentId : str = "agent_black"
-        self.context_manager = ContextManager(config)
         self.tool_registry = create_tool_registry(config)
+        self.context_manager = ContextManager(config,tools=self.tool_registry.get_tools())
         self.config = config
         self.sessionId = str(uuid.uuid4())
         self.createdAt = datetime.now()

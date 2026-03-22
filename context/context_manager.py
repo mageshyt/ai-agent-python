@@ -2,8 +2,10 @@
 from dataclasses import dataclass, field
 from typing import Any
 from config.config import Config
+from config.loader import get_data_dir
 from lib.text import count_tokens
 from propmpts.system import get_system_prompt
+from tools.base import Tool
 
 @dataclass
 class MessageItem:
@@ -29,10 +31,13 @@ class MessageItem:
 
         return result
 class ContextManager:
-    def __init__(self,config:Config) -> None:
-        self.system_prompts  = get_system_prompt(config)
+    def __init__(self,config:Config,tools:list[Tool]) -> None:
+        self.system_prompts  = get_system_prompt(
+                config,
+                self._load_memory(),
+                tools
+                )
         self._messages: list[MessageItem] = []
-        #TODO: make model configurable
         self._config = config
         self._model = config.get_model_name
 
@@ -67,5 +72,12 @@ class ContextManager:
         self._messages.append(item)
 
 
+    def _load_memory(self) -> str | None:
+        data_dir = get_data_dir()
+        memory_file = data_dir / "user_memory.json"
 
+        if not memory_file.is_file():
+            return None
+
+        return memory_file.read_text()
 

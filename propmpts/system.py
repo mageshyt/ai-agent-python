@@ -6,7 +6,8 @@ import platform
 
 def get_system_prompt(
     config:Config,
-    tools:list[type[Tool]] = [],
+    user_memory: str | None = None,
+    tools:list[Tool] = []
 ) -> str:
     parts = []
 
@@ -29,6 +30,9 @@ def get_system_prompt(
     # Tool usage guidelines
     if tools:
         parts.append(_get_tool_guidelines_section(tools=tools))
+
+    if user_memory:
+        parts.append(_get_memory_section(user_memory))
 
     parts.append(create_loop_breaker_prompt("The agent is repeating the same actions or responses without making progress towards the user's goal."))
     # Operational guidelines
@@ -222,7 +226,7 @@ The following information has been stored from previous interactions:
 Use this information to personalize your responses and maintain consistency."""
 
 
-def _get_tool_guidelines_section(tools: list[type[Tool]]) -> str:
+def _get_tool_guidelines_section(tools: list[Tool]) -> str:
     """Generate tool usage guidelines."""
 
     regular_tools = [t for t in tools if not t.name.startswith("subagent_")]

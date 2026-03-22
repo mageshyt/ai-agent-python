@@ -4,14 +4,14 @@ import logging
 from pathlib import Path
 from typing import Any
 from config.config import Config
-from platformdirs import user_config_dir
-from lib import CONFIG_FILE_NAME, ConfigError , AGENT_MD_FILE_NAME
+from platformdirs import user_config_dir, user_data_dir
+from lib import CONFIG_FILE_NAME, ConfigError , AGENT_MD_FILE_NAME , APP_NAME
 
 
 logger = logging.getLogger(__name__)
 
 def get_config_dir()-> Path:
-    return Path(user_config_dir(appname=".cyberowl-agent", appauthor="agent"))
+    return Path(user_config_dir(appname=f".{APP_NAME}", appauthor="agent"))
 
 def get_system_config_path() -> Path:
     return get_config_dir() / CONFIG_FILE_NAME
@@ -118,4 +118,10 @@ def _get_project_config(cwd:Path) -> Path | None:
         if config_path.is_file():
             return config_path
     return None
+
+
+def get_data_dir() -> Path:
+    data_dir= Path(user_data_dir(appname=f".{APP_NAME}", appauthor="agent"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
 
