@@ -1,10 +1,5 @@
 __all__ = ["get_all_builtin_tools"]
 
-
-
-
-
-
 def get_all_builtin_tools() -> list[type]:
     from tools.builtin.web_search import WebSearchTool
     from tools.builtin.edit_file import EditTool
@@ -16,6 +11,7 @@ def get_all_builtin_tools() -> list[type]:
     from tools.builtin.web_scrap import WebScrapTool
     from tools.builtin.write_file import WriteFile
     from tools.builtin.todo import TodoTool
+    from tools.builtin.memory import MemoryTool
 
     return [
         ReadFileTool,
@@ -27,5 +23,6 @@ def get_all_builtin_tools() -> list[type]:
         GlobTool,
         WebSearchTool,
         WebScrapTool,
-        TodoTool
+        TodoTool,
+        MemoryTool
     ]
