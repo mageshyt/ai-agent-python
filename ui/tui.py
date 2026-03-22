@@ -656,6 +656,34 @@ class TUI:
                 )
             else:
                 blocks.append(Text(output_display, style="dim white"))
+        
+        elif tool_name == "memory" and success:
+            action = args.get("action", "")
+            key = args.get("key", "")
+
+            summary = []
+            if isinstance(action, str) and action:
+                summary.append(f"Action: {action.capitalize()}")
+            if isinstance(key, str) and key:
+                summary.append(f"Key: {key}")
+            if summary:
+                blocks.append(Text("  ".join(summary), style="muted"))
+
+            output_display = truncate_text_by_tokens(output, self._max_block_tokens)
+
+            blocks.append(
+                Panel(
+                    Syntax(
+                        output_display,
+                        lexer="json" if action == "get" else "text",
+                        theme=CODE_THEME,
+                        word_wrap=False,
+                    ),
+                    border_style="border",
+                    box=box.MINIMAL,
+                    padding=(0, 1)
+                )
+            )
 
         else:
             body = (error or "") if not success else (output or "")
