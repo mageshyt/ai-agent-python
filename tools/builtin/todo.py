@@ -1,5 +1,5 @@
-import uuid
 from config.config import Config
+import uuid
 from tools.base import Tool, ToolInvocation, ToolResult, ToolKind
 from pydantic import BaseModel, Field
 
@@ -72,7 +72,6 @@ class TodoTool(Tool):
 
         del self.todos[params.id]
         return ToolResult.success_result(f"Removed todo item with ID: {params.id}")
-
 
     def _list_todos(self, params: TodoParams) -> ToolResult:
         if not self.todos:

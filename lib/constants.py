@@ -1,5 +1,6 @@
 CONFIG_FILE_NAME = "config.toml"
 AGENT_MD_FILE_NAME = "agent.md"
+APP_NAME = "cyberowl-agent"
 
 IGNORED_DIRECTORIES = {
     "node_modules",
