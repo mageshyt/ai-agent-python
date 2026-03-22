@@ -320,11 +320,13 @@ class MemoryTool(Tool):
         data_dir = get_data_dir()
         lock_file = data_dir / "user_memory.lock"
         with lock_file.open("a+") as lock_handle:
+            # lock the file for exclusive access, creating it if it doesn't exist
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
             try:
                 yield
             finally:
-                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+                # release the lock
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN) 
 
 
 

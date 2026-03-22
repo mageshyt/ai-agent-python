@@ -802,7 +802,7 @@ class TUI:
                 "grep": ["path", "case_insensitive", "pattern"],
                 "glob": ["path", "pattern"],
                 "todos": ["id", "action", "content"],
-                "memory": ["action", "key", "value"],
+                "memory": ["action", "scope", "key", "value", "ttl_seconds"],
         }
 
         preffered = _PREFERRED_ORDER.get(tool_name, [])
