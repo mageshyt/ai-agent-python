@@ -1,4 +1,5 @@
 import os
+from typing import Any
 from pydantic import BaseModel, Field
 from pathlib import Path
 import dotenv
@@ -29,6 +30,8 @@ class Config(BaseModel):
 
     user_instructions:str | None = None
     debug: bool = False
+
+    allowed_tools: list[str] | None = None
 
 
     @property
@@ -72,3 +75,6 @@ class Config(BaseModel):
             errors.append(f"CWD path '{self.cwd}' does not exist or is not a directory")
 
         return errors
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump(mode="json")

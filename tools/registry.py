@@ -10,8 +10,9 @@ from tools.builtin import  get_all_builtin_tools
 
 logger = logging.getLogger(__name__)
 class ToolRegistry:
-    def __init__(self) -> None:
+    def __init__(self,config:Config) -> None:
         self._tools:dict[str,Tool] = {}
+        self.config = config
 
 
     def register_tool(self, tool: Tool) -> None:
@@ -34,8 +35,15 @@ class ToolRegistry:
     def get_tools(self) -> list[Tool]:
         tools: list[Tool] = []
         # add our local tools first
+
         for tool in self._tools.values():
             tools.append(tool)
+
+        if self.config.allowed_tools is not None:
+        # NOTE: Filter by allowed tools if specified in config
+            allowed_tool_names = set(self.config.allowed_tools)
+            tools = [tool for tool in tools if tool.name in allowed_tool_names]
+
         # NOTE: we will be adding mcp tools later, so we will keep the order of local tools first, then mcp tools
         return tools
 
@@ -74,7 +82,7 @@ class ToolRegistry:
 
 
 def create_tool_registry(config:Config) -> ToolRegistry:
-    registry = ToolRegistry()
+    registry = ToolRegistry(config)
     for tool in get_all_builtin_tools():
         registry.register_tool(tool(config))
 
