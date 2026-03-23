@@ -82,6 +82,16 @@ def parase_tool_call_arguments(arguments:str) -> dict[str, Any]:
     try:
         return json.loads(arguments)
     except json.JSONDecodeError:
+        text = arguments.strip()
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            candidate = text[start:end + 1]
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                pass
+
         print("Failed to parse tool call arguments as JSON. Returning raw string.")
         return {"raw_arguments": arguments}
 

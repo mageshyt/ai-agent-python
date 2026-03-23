@@ -102,35 +102,39 @@ class LLMProvider:
             text_delta = None
 
             if delta.tool_calls:
-                for idx, tool_call in enumerate(delta.tool_calls):
-                    if idx not in tool_calls:
-                        tool_calls[idx] = {
-                            'id' : tool_call.id if hasattr(tool_call, "id") else "",
+                for tool_call in delta.tool_calls:
+                    call_index = tool_call.index if hasattr(tool_call, "index") and tool_call.index is not None else 0
+
+                    if call_index not in tool_calls:
+                        tool_calls[call_index] = {
+                            'id' : tool_call.id if hasattr(tool_call, "id") and tool_call.id else "",
                             "name": '',
                             'arguments': ''
                         }
+                    elif (not tool_calls[call_index]['id']) and hasattr(tool_call, "id") and tool_call.id:
+                        tool_calls[call_index]['id'] = tool_call.id
 
                     if tool_call.function:
                         if tool_call.function.name:
-                            tool_calls[idx]["name"] = tool_call.function.name
+                            tool_calls[call_index]["name"] = tool_call.function.name
                             yield StreamEvent(
                                     type = StreamEventType.TOOL_CALL_START,
                                     tool_call_delta= ToolCallDelta(
-                                        id=tool_calls[idx]['id'],
-                                        name=tool_calls[idx]['name'],
-                                        arguments=tool_calls[idx]['arguments']
+                                        id=tool_calls[call_index]['id'],
+                                        name=tool_calls[call_index]['name'],
+                                        arguments=tool_calls[call_index]['arguments']
                                         )
                                     )
 
 
-                        if hasattr(tool_call.function,"arguments"):
-                            tool_calls[idx]['arguments'] += tool_call.function.arguments
+                        if hasattr(tool_call.function,"arguments") and tool_call.function.arguments:
+                            tool_calls[call_index]['arguments'] += tool_call.function.arguments
                             yield StreamEvent(
                                 type = StreamEventType.TOOL_CALL_DELTA,
                                 tool_call_delta= ToolCallDelta(
-                                    id=tool_calls[idx]['id'],
-                                    name=tool_calls[idx]['name'],
-                                    arguments=tool_calls[idx]['arguments']
+                                    id=tool_calls[call_index]['id'],
+                                    name=tool_calls[call_index]['name'],
+                                    arguments=tool_calls[call_index]['arguments']
                                     )
                                 )
             if delta.content:
@@ -140,7 +144,7 @@ class LLMProvider:
                     type=StreamEventType.TEXT_DELTA,
                     text_delta=text_delta,
                 )
-        for idx, tool_call in tool_calls.items():
+        for _, tool_call in sorted(tool_calls.items(), key=lambda item: item[0]):
             yield StreamEvent(
                     type = StreamEventType.TOOL_CALL_END,
                     tool_call = ToolCall(
@@ -169,7 +173,7 @@ class LLMProvider:
         if message.content is not None:
             text_delta = TextDelta(content=message.content, role=message.role)
 
-        tool_calls:[ToolCall] = []
+        tool_calls: list[ToolCall] = []
         if message.tool_calls:
             for idx, tool_call in enumerate(message.tool_calls):
                 tool_calls.append(ToolCall(
