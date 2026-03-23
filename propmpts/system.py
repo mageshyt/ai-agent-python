@@ -7,7 +7,7 @@ import platform
 def get_system_prompt(
     config:Config,
     user_memory: str | None = None,
-    tools:list[Tool] = []
+    tools:list[Tool] | None = None
 ) -> str:
     parts = []
 
@@ -229,8 +229,8 @@ Use this information to personalize your responses and maintain consistency."""
 def _get_tool_guidelines_section(tools: list[Tool]) -> str:
     """Generate tool usage guidelines."""
 
-    regular_tools = [t for t in tools if not t.name.startswith("subagent_")]
-    subagent_tools = [t for t in tools if t.name.startswith("subagent_")]
+    subagent_tools = [tool for tool in tools if tool.name.startswith("subagent_")]
+    regular_tools = [tool for tool in tools if not tool.name.startswith("subagent_")]
 
     guidelines = """# Tool Usage Guidelines
 
@@ -239,18 +239,12 @@ You have access to the following tools to accomplish your tasks:
 """
 
     for tool in regular_tools:
-        description = tool.description
-        if len(description) > 100:
-            description = description[:100] + "..."
-        guidelines += f"- **{tool.name}**: {description}\n"
+        guidelines += f"- **{tool.name}**: {tool.description}\n"
 
     if subagent_tools:
         guidelines += "\n## Sub-Agents\n\n"
         for tool in subagent_tools:
-            description = tool.description
-            if len(description) > 100:
-                description = description[:100] + "..."
-            guidelines += f"- **{tool.name}**: {description}\n"
+            guidelines += f"- **{tool.name}**: {tool.description}\n"
 
     guidelines += """
 ## Best Practices
@@ -343,5 +337,4 @@ To break out of this loop, please:
 Do not repeat the same action again.
 """
 if __name__ == "__main__":
-    # print(get_system_prompt())
     pass

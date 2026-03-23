@@ -45,7 +45,6 @@ class ToolRegistry:
         # NOTE: Filter by allowed tools if specified in config
             allowed_tool_names = set(self.config.allowed_tools)
             tools = [tool for tool in tools if tool.name in allowed_tool_names]
-        print(f"Tools available in registry after filtering by allowed_tools: {[tool.name for tool in tools]}")
         # NOTE: we will be adding mcp tools later, so we will keep the order of local tools first, then mcp tools
         return tools
 
@@ -90,11 +89,5 @@ def create_tool_registry(config:Config) -> ToolRegistry:
 
     for definition in get_subagent_definitions():
         registry.register_tool(SubAgentTool(config, definition))
-
+    
     return registry
-
-
-
-
-
-

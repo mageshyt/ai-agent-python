@@ -2,6 +2,14 @@ CONFIG_FILE_NAME = "config.toml"
 AGENT_MD_FILE_NAME = "agent.md"
 APP_NAME = "cyberowl-agent"
 
+# Branding and character/persona settings for the CLI experience.
+AGENT_DISPLAY_NAME = "CYBEROWL"
+AGENT_ASCII_FONT = "ansi_shadow"
+AGENT_TAGLINE = "Command-line interface"
+AGENT_CHARACTER = (
+    "Precise, practical coding partner. Prioritize correctness, safety, and clear execution."
+)
+
 IGNORED_DIRECTORIES = {
     "node_modules",
     ".git",

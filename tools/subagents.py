@@ -2,7 +2,6 @@ import asyncio
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
-from agent.events import AgentEventType
 from config.config import Config
 from tools.base import Tool, ToolInvocation, ToolKind, ToolResult
 
@@ -48,6 +47,7 @@ class SubAgentTool(Tool):
         return True
 
     async def execute(self, invocation: ToolInvocation)->ToolResult:
+        from agent.events import AgentEventType
         from agent.agent import Agent
 
         params = SubAgentParams(**invocation.params)
@@ -79,8 +79,9 @@ class SubAgentTool(Tool):
                                 case AgentEventType.TOOL_STARTED:
                                     tool_name = event.data.get("tool_name") if event.data.get("tool_name") else "Unknown tool"
                                     tool_calls.append(tool_name)
-                                case AgentEventType.TOOL_FINISHED:
-                                    pass
+                                case AgentEventType.AGENT_FINISHED:
+                                    if final_response is None:
+                                        final_response = event.data.get("response") if event.data.get("response") else "No response"
                                 case AgentEventType.TEXT_COMPLETE:
                                     final_response = event.data.get("content") if event.data.get("content") else None
                                 case AgentEventType.AGENT_ERROR:
