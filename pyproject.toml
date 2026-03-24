@@ -10,6 +10,7 @@ dependencies = [
     "ddgs>=9.11.4",
     "dotenv>=0.9.9",
     "openai>=2.24.0",
+    "pyfiglet>=1.0.2",
     "prompt-toolkit>=3.0.52",
     "pydantic>=2.12.5",
     "rich>=14.3.3",

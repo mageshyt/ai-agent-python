@@ -1,13 +1,14 @@
 import json as _json
+import importlib
 import re
+import time
 from pathlib import Path
 from typing import Any
 
 from rich.console import Console, Group
 from rich.markdown import Markdown
-from rich.syntax import Syntax, SyntaxPosition
+from rich.syntax import Syntax
 from rich.theme import Theme
-from rich.rule import Rule
 from rich.text import Text
 from rich.spinner import Spinner
 from rich.live import Live
@@ -16,6 +17,7 @@ from rich.table import Table
 from rich import box
 
 from config.config import Config
+from lib.constants import AGENT_ASCII_FONT, AGENT_CHARACTER, AGENT_DISPLAY_NAME, AGENT_TAGLINE
 from lib.paths import get_relative_path
 from lib.text import truncate_text_by_tokens
 from tools.base import FileDiff, ToolKind
@@ -129,18 +131,22 @@ class TUI:
         )
 
     def show_welcome_message(self) -> None:
-        owl_art = """  ░██████  ░██     ░██ ░████████   ░██████████ ░█████████    ░██████   ░██       ░██ ░██         
- ░██   ░██  ░██   ░██  ░██    ░██  ░██         ░██     ░██  ░██   ░██  ░██       ░██ ░██         
-░██          ░██ ░██   ░██    ░██  ░██         ░██     ░██ ░██     ░██ ░██  ░██  ░██ ░██         
-░██           ░████    ░████████   ░█████████  ░█████████  ░██     ░██ ░██ ░████ ░██ ░██         
-░██            ░██     ░██     ░██ ░██         ░██   ░██   ░██     ░██ ░██░██ ░██░██ ░██         
- ░██   ░██     ░██     ░██     ░██ ░██         ░██    ░██   ░██   ░██  ░████   ░████ ░██         
-  ░██████      ░██     ░█████████  ░██████████ ░██     ░██   ░██████   ░███     ░███ ░██████████"""
+        owl_art = self._build_ascii_banner(AGENT_DISPLAY_NAME)
 
-        # ASCII banner
-        banner = Text(owl_art, style="bold cyan", justify="left")
+        # Startup animation
+        with self.console.status("[working]Booting interface...[/]", spinner="dots"):
+            time.sleep(0.25)
+
+        # Gradient ASCII banner
+        banner = self._gradient_text(
+            owl_art,
+            start=(58, 134, 255),
+            end=(255, 99, 172),
+            bold=True,
+        )
         self.console.print()
         self.console.print(banner)
+        self.console.print(Text(AGENT_TAGLINE, style="dim", justify="left"))
         self.console.print()
 
         # Info grid: model + cwd
@@ -154,11 +160,12 @@ class TUI:
 
         info.add_row("Model", f"{model_name}  [dim](temp {temperature})[/dim]")
         info.add_row("Directory", cwd)
+        info.add_row("Character", AGENT_CHARACTER)
 
         self.console.print(
             Panel(
                 info,
-                border_style="border",
+                border_style="bright_blue",
                 box=box.ROUNDED,
                 padding=(0, 2),
             )
@@ -167,19 +174,67 @@ class TUI:
         # Quick-start hint line
         self.console.print(
             Text.assemble(
-                ("  Type your message and press ", "dim"),
-                ("Enter", "bold white"),
-                (" to chat  ·  ", "dim"),
+                ("  Ask questions, edit files, run commands  ", "dim"),
+                ("•", "muted"),
+                ("  ", "dim"),
                 ("/help", "command"),
-                (" for commands  ·  ", "dim"),
-                ("/exit", "command"),
-                (" to quit", "dim"),
+                (" for commands  ", "dim"),
+                ("•", "muted"),
+                ("  ", "dim"),
+                ("Enter", "bold white"),
+                (" to submit", "dim"),
             )
         )
         self.console.print()
+
+    def _build_ascii_banner(self, title: str) -> str:
+        """Build ASCII title text with pyfiglet if available, else fallback art."""
+        try:
+            pyfiglet = importlib.import_module("pyfiglet")
+            Figlet = getattr(pyfiglet, "Figlet")
+            figlet = Figlet(font=AGENT_ASCII_FONT)
+            return figlet.renderText(title).rstrip("\n")
+        except Exception:
+            
+            return """  ░██████  ░██     ░██ ░████████   ░██████████ ░█████████    ░██████   ░██       ░██ ░██         
+ ░██   ░██  ░██   ░██  ░██    ░██  ░██         ░██     ░██  ░██   ░██  ░██       ░██ ░██         
+░██          ░██ ░██   ░██    ░██  ░██         ░██     ░██ ░██     ░██ ░██  ░██  ░██ ░██         
+░██           ░████    ░████████   ░█████████  ░█████████  ░██     ░██ ░██ ░████ ░██ ░██         
+░██            ░██     ░██     ░██ ░██         ░██   ░██   ░██     ░██ ░██░██ ░██░██ ░██         
+ ░██   ░██     ░██     ░██     ░██ ░██         ░██    ░██   ░██   ░██  ░████   ░████ ░██         
+  ░██████      ░██     ░█████████  ░██████████ ░██     ░██   ░██████   ░███     ░███ ░██████████"""
+
+    def _gradient_text(self, text: str, start: tuple[int, int, int], end: tuple[int, int, int], bold: bool = False) -> Text:
+        """Render multiline text with a left-to-right RGB gradient."""
+        lines = text.splitlines()
+        visible_chars = sum(1 for ch in text if ch not in {"\n", " "})
+        if visible_chars <= 1:
+            return Text(text, style="bold cyan" if bold else "cyan")
+
+        out = Text()
+        idx = 0
+        for line_no, line in enumerate(lines):
+            for ch in line:
+                if ch == " ":
+                    out.append(ch)
+                    continue
+
+                ratio = idx / (visible_chars - 1)
+                r = int(start[0] + (end[0] - start[0]) * ratio)
+                g = int(start[1] + (end[1] - start[1]) * ratio)
+                b = int(start[2] + (end[2] - start[2]) * ratio)
+                style = f"#{r:02x}{g:02x}{b:02x}"
+                if bold:
+                    style += " bold"
+                out.append(ch, style=style)
+                idx += 1
+
+            if line_no < len(lines) - 1:
+                out.append("\n")
+
+        return out
     def begin_assistant(self) -> None:
         self.console.print()
-        self.console.print(Rule(Text("Assistant", style="assistant")))
         self._assistant_stream_open = True
         self._buffer = ""
         self._last_render_pos = 0
@@ -238,7 +293,6 @@ class TUI:
         if self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
-        self.console.print(Rule(style="border"))
         self.console.print()
             
     
@@ -259,7 +313,14 @@ class TUI:
             self._buffer = ""
             return
 
-        if self._use_markdown:
+        is_simple_line = (
+            "\n" not in content
+            and not any(token in content for token in ["#", "`", "*", "|", "[", "]", "(", ")"])
+        )
+
+        if is_simple_line:
+            self.console.print(Text.assemble(("✦ ", "assistant"), (content.strip(), "dim white")))
+        elif self._use_markdown:
             self.console.print(Markdown(content))
         else:
             self.console.print(Text(content, style="dim white"))
