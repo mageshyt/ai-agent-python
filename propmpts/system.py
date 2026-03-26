@@ -12,7 +12,7 @@ def get_system_prompt(
     parts = []
 
     # Identity and role
-    parts.append(_get_identity_section())
+    # parts.append(_get_identity_section())
 
     # Environment
     parts.append(_get_environment_section(config))
@@ -21,7 +21,7 @@ def get_system_prompt(
     parts.append(_get_agents_md_section())
 
     # Security guidelines
-    parts.append(_get_security_section())
+    # parts.append(_get_security_section())
 
     # User instructions
     if config.user_instructions:
@@ -36,7 +36,7 @@ def get_system_prompt(
 
     parts.append(create_loop_breaker_prompt("The agent is repeating the same actions or responses without making progress towards the user's goal."))
     # Operational guidelines
-    parts.append(_get_operational_section())
+    # parts.append(_get_operational_section())
 
     return "\n\n".join(parts)
 

@@ -42,12 +42,17 @@ def load_config(cwd: Path | None = None) -> Config:
     if "cwd" not in config_dict:
         config_dict["cwd"] = str(cwd)
 
-    if "user_instructions" not in config_dict:
-        config_dict["user_instructions"] = None
+    agent_md_instructions = _get_agent_md_files(cwd)
+    existing_instructions = config_dict.get("user_instructions")
 
+    if agent_md_instructions and existing_instructions:
+        config_dict["user_instructions"] = (
+            f"{existing_instructions}\n\n{agent_md_instructions}"
+        )
+    elif agent_md_instructions:
+        config_dict["user_instructions"] = agent_md_instructions
     else:
-        # collect the agent.md file
-        config_dict["user_instructions"] = _get_agent_md_files(cwd)
+        config_dict["user_instructions"] = existing_instructions if existing_instructions else None
 
     try:
         config = Config(**config_dict)
