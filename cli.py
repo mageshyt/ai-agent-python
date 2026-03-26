@@ -6,10 +6,12 @@ from agent.events import AgentEventType
 from config.config import Config
 from ui.tui import TUI, get_console
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.completion import  Completer, Completion
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.styles import Style
+from prompt_toolkit.shortcuts import CompleteStyle
 from prompt_toolkit.formatted_text import HTML
+from lib import IGNORED_DIRECTORIES
 
 
 console = get_console()
@@ -20,6 +22,65 @@ COMMANDS = [
     "/save", "/sessions",
 ]
 
+class SystemCommandCompleter(Completer):
+    def __init__(self, commands):
+        self.commands = commands
+        
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+        match = re.search(r'(?<!\S)(/[A-Za-z0-9_-]*)$', text)
+        if not match:
+            return
+            
+        typed = match.group(1).lower()
+        for cmd in self.commands:
+            if cmd.startswith(typed):
+                yield Completion(
+                    cmd,
+                    start_position=-len(typed),
+                    display=f"⚡ {cmd}"
+                )
+
+class FileMentionCompleter(Completer):
+    def __init__(self, cache):
+        self.cache = cache
+
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+        # Look for @ followed by any path characters at the very end of typed string
+        match = re.search(r'@([A-Za-z0-9_\-\.\/]*)$', text)
+        if not match:
+            return
+
+        typed = match.group(1)
+        typed_lower = typed.lower()
+        
+        # Fuzzy/Substring match against the cached files
+        matches = [f for f in self.cache if typed_lower in f.lower()]
+        
+        # Sort so that exact prefix matches appear first
+        matches.sort(key=lambda x: (not x.lower().startswith(typed_lower), x))
+
+        # Show max 15 to keep UI clean
+        for match_file in matches[:15]:
+            yield Completion(
+                match_file,
+                start_position=-len(typed),
+                display=f"{match_file}"
+            )
+
+class UnifiedCompleter(Completer):
+    def __init__(self, cmd_completer: Completer, fs_completer: Completer):
+        self.cmd_completer = cmd_completer
+        self.fs_completer = fs_completer
+
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+        if re.search(r'@[A-Za-z0-9_\-\.\/]*$', text):
+            yield from self.fs_completer.get_completions(document, complete_event)
+        elif re.search(r'(?<!\S)/[A-Za-z0-9_-]*$', text):
+            yield from self.cmd_completer.get_completions(document, complete_event)
+
 PROMPT_STYLE = Style.from_dict({
     # Input prompt
     "prompt":                              "#00ffff bold",
@@ -29,12 +90,13 @@ PROMPT_STYLE = Style.from_dict({
     "prompt.input":                        "#c0caf5",
     "rprompt":                             "#7aa2f7",
     # Autocomplete dropdown
-    "completion-menu.completion":            "bg:#1e1e2e #cdd6f4",
-    "completion-menu.completion.current":    "bg:#89b4fa #1e1e2e bold",
-    "completion-menu.meta.completion":       "bg:#1e1e2e #6c7086",
-    "completion-menu.meta.completion.current": "bg:#89b4fa #1e1e2e",
-    "scrollbar.background":                  "bg:#313244",
-    "scrollbar.button":                      "bg:#89b4fa",
+    "completion-menu":                       "bg:#1e1e2e #a9b1d6",
+    "completion-menu.completion":            "bg:#1e1e2e #a9b1d6",
+    "completion-menu.completion.current":    "bg:#414868 #ffffff bold",
+    "completion-menu.meta.completion":       "bg:#1e1e2e #565f89",
+    "completion-menu.meta.completion.current": "bg:#414868 #c0caf5",
+    "scrollbar.background":                  "bg:#1a1b26",
+    "scrollbar.button":                      "bg:#565f89",
     # Bottom toolbar
     "bottom-toolbar":                        "#000000 nounderline",
     "bottom-toolbar.text":                   "#9aa5ce",
@@ -43,7 +105,9 @@ PROMPT_STYLE = Style.from_dict({
     "bottom-toolbar.branch":                 "#8aadf4",
 })
 
-command_completer = WordCompleter(COMMANDS, pattern=re.compile(r"\/\w*"), sentence=True)
+command_completer = SystemCommandCompleter(COMMANDS)
+
+
 
 
 class CLI:
@@ -51,6 +115,8 @@ class CLI:
         self.agent : Agent | None = None
         self.config = config
         self.tui = TUI(console,config)
+        self.filesystem_completer = self._get_filesystem_completer(Path(config.cwd))
+
 
     async def  run_single(self,message:str) -> str | None:
         """ Run a single message through the agent and return the final response.
@@ -78,6 +144,25 @@ class CLI:
         if not self.agent:
             self.tui.agent_error("Agent is not initialized.")
             return None
+
+        # Parse file mentions and attach context explicitly 
+        file_mentions = list(set(re.findall(r'@([^\s]+)', message)))
+        context_blocks = []
+        
+        for file_path in file_mentions:
+            full_path = Path(self.config.cwd) / file_path
+            if full_path.is_file():
+                try:
+                    content = full_path.read_text(encoding="utf-8")
+                    context_blocks.append(f"--- File: {file_path} ---\n{content}\n")
+                    self.tui.agent_started("System", f"Attached file: {file_path}")
+                except Exception as e:
+                    self.tui.agent_error(f"Could not read {file_path}: {e}")
+            else:
+                self.tui.agent_error(f"File not found: {file_path}")
+                
+        if context_blocks:
+            message = message + "\n\nAttached Context:\n" + "\n".join(context_blocks)
 
         self.tui.begin_assistant()
         final_response = None
@@ -144,8 +229,9 @@ class CLI:
         branch_text = f"[{branch}]" if branch else ""
         session: PromptSession = PromptSession(
             history=InMemoryHistory(),
-            completer=command_completer,
+            completer=UnifiedCompleter(command_completer, self.filesystem_completer),
             complete_while_typing=True,
+            complete_style=CompleteStyle.COLUMN,
             style=PROMPT_STYLE,
             bottom_toolbar=HTML(self._build_bottom_toolbar(cwd_name, branch_text)),
         )
@@ -226,3 +312,19 @@ class CLI:
             f'<style fg="#c6d0f5">~/{cwd_name}</style>'
             f'<style fg="#8aadf4"> {branch_text}</style>'
         )
+    
+    def _get_filesystem_completer(self, cwd: Path) -> Completer:
+        import os
+        file_list = []
+        for root, dirs, files in os.walk(cwd):
+            if any(ignored in root.split(os.sep) for ignored in IGNORED_DIRECTORIES):
+                continue
+            for name in files:
+                if any(ignored in name for ignored in IGNORED_DIRECTORIES):
+                    continue
+                rel_path = os.path.relpath(os.path.join(root, name), cwd)
+                # Normalize slashes for consistency
+                if os.name == 'nt':
+                    rel_path = rel_path.replace('\\', '/')
+                file_list.append(rel_path)
+        return FileMentionCompleter(cache=file_list)
