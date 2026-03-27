@@ -84,10 +84,10 @@ class ToolRegistry:
 
 def create_tool_registry(config:Config) -> ToolRegistry:
     registry = ToolRegistry(config)
-    for tool in get_all_builtin_tools():
-        registry.register_tool(tool(config))
+    # for tool in get_all_builtin_tools():
+    #     registry.register_tool(tool(config))
 
-    for definition in get_subagent_definitions():
-        registry.register_tool(SubAgentTool(config, definition))
+    # for definition in get_subagent_definitions():
+    #     registry.register_tool(SubAgentTool(config, definition))
     
     return registry

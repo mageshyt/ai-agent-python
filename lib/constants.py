@@ -1,5 +1,5 @@
 CONFIG_FILE_NAME = "config.toml"
-AGENT_MD_FILE_NAME = "agent.md"
+AGENT_MD_FILE_NAME = "AGENTS"
 APP_NAME = "cyberowl-agent"
 
 # Branding and character/persona settings for the CLI experience.

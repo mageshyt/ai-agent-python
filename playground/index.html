@@ -403,6 +403,39 @@
       let roomId = "test-room-001";
       let myAgentId = "Agent-Gamma";
       let e2eeKey = "CLA-PLAYGROUND-SECRET-KEY-2026";
+      const senderIndexMap = new Map();
+      let nextSenderIndex = 1;
+
+      function getSenderIndex(sender) {
+        if (senderIndexMap.has(sender)) {
+          return senderIndexMap.get(sender);
+        }
+
+        // Prefer explicit numeric IDs in names like Agent-1, Agent_2, agent3.
+        const match = sender.match(/(?:^|[^0-9])(\d+)(?:[^0-9]|$)/);
+        if (match) {
+          const numericIndex = parseInt(match[1], 10);
+          if (Number.isFinite(numericIndex) && numericIndex > 0) {
+            senderIndexMap.set(sender, numericIndex);
+            return numericIndex;
+          }
+        }
+
+        // Fallback for non-numbered names: stable first-seen ordering.
+        senderIndexMap.set(sender, nextSenderIndex);
+        nextSenderIndex += 1;
+        return senderIndexMap.get(sender);
+      }
+
+      function getBubbleClass(sender) {
+        if (sender === "System") {
+          return "system";
+        }
+
+        const senderIndex = getSenderIndex(sender);
+        // Odd index -> left, even index -> right.
+        return senderIndex % 2 === 0 ? "agent2" : "agent1";
+      }
 
       function xorBytes(inputBytes, keyBytes) {
         const out = new Uint8Array(inputBytes.length);
@@ -457,7 +490,9 @@
             decrypted = await decryptMessage(message);
           }
 
-          div.className = `message ${sender === "Agent-CLI-Alpha" ? "agent1" : sender === "Agent-CLI-Beta" ? "agent2" : "system"}`;
+          const bubbleClass = getBubbleClass(sender);
+
+          div.className = `message ${bubbleClass}`;
           div.innerHTML = `
                     <strong>${sender}</strong><br>
                     ${decrypted}
