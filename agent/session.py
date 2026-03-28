@@ -4,6 +4,7 @@ from datetime import datetime
 from config.config import Config
 from context.context_manager import ContextManager
 from llm.client import LLMProvider
+from tools.discovery import ToolDiscoveryManger
 from tools.registry import create_tool_registry
 
 
@@ -14,11 +15,14 @@ class Session:
         self.tool_registry = create_tool_registry(config)
         self.context_manager = ContextManager(config,tools=self.tool_registry.get_tools())
         self.config = config
+        self.discovery_manager = ToolDiscoveryManger(config,self.tool_registry)
         self.sessionId = str(uuid.uuid4())
         self.createdAt = datetime.now()
         self.updatedAt = datetime.now()
 
         self._turn_count = 0 # to track the number of turns in the session
+
+        self.discovery_manager.discover_all() # discover tools at the start of the session
 
 
     def increment_turn(self)->int:
