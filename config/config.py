@@ -1,6 +1,8 @@
+from __future__ import annotations
 import os
+
 from typing import Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pathlib import Path
 import dotenv
 
@@ -12,6 +14,25 @@ class ModelConfig(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=1.0, description="Sampling temperature for the model, between 0 and 1")
     context_window: int  = 128_000 
 
+class MCPServerConfig(BaseModel):
+    enable: bool = True
+    startup_timeout: int = 30  # seconds to wait for MCP server to start before timing out
+    cwd:Path | None = None
+
+    command : str | None = None
+    args : list[str] = Field(default_factory=list)
+    env : dict[str, str] = Field(default_factory=dict)
+    # http/sse transport settings
+    url:str | None = None  # URL to connect to MCP server, if not using command/args to start it
+
+    @model_validator(mode="after")
+    def validate_transport(self) -> "MCPServerConfig":
+        if self.enable:
+            if self.command and self.url:
+                raise ValueError("MCPServerConfig cannot have both 'command'(studio) and 'url'(http/sse) set when 'enable' is True")
+            if not self.command and not self.url:
+                raise ValueError("MCPServerConfig must have either 'command'(studio) or 'url'(http/sse) set when 'enable' is True")
+        return self
 
 class ShellEnvironmentPolicy(BaseModel):
     ignore_default_excludes: bool = False
@@ -27,6 +48,7 @@ class Config(BaseModel):
     max_consecutive_tool_failures: int = 5
     max_tool_output_tokens : int = 50_000
     shell_environment : ShellEnvironmentPolicy = Field(default_factory=ShellEnvironmentPolicy)
+    mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict) 
 
     user_instructions:str | None = None
     debug: bool = False

@@ -31,7 +31,6 @@ def load_config(cwd: Path | None = None) -> Config:
     # project level config - current working directory config
 
     project_config_path = _get_project_config(cwd)
-    print(f"Project config path: {project_config_path}, cwd: {cwd}")
     if project_config_path:
         try:
             project_config_dict = _parse_config_file(project_config_path)
@@ -48,6 +47,14 @@ def load_config(cwd: Path | None = None) -> Config:
     else:
         # collect the agent.md file
         config_dict["user_instructions"] = _get_agent_md_files(cwd)
+
+
+    # register mcp tools
+    # if "mcp_tools" not in config_dict:
+    #     config_dict["mcp_tools"] = []
+    #
+    #     pass
+    print(config_dict)
 
     try:
         config = Config(**config_dict)
