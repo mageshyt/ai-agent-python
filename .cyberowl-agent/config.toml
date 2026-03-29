@@ -2,3 +2,7 @@
 # name  = "arcee-ai/trinity-large-preview:free"
 name = "stepfun/step-3.5-flash:free"
 # name = "nvidia/nemotron-3-super-120b-a12b:free"
+
+[mcp_servers.browsermcp]
+command = "npx"
+args =  ["@browsermcp/mcp@latest"]
