@@ -81,5 +81,6 @@ class MCPManager:
         ]
 
         await asyncio.gather(*shutdown_tasks, return_exceptions=True)   
+        self._clients.clear()
         self._initialized = False
 

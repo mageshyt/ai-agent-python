@@ -1,4 +1,5 @@
 import os
+import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -81,18 +82,33 @@ class MCPClient:
 
             self.status = MCPServerStatus.CONNECTED
 
+        except asyncio.CancelledError:
+            self.status = MCPServerStatus.ERROR
+            await self._safe_close_client()
+            raise
+
         except Exception as e:
             self.status = MCPServerStatus.ERROR
+            await self._safe_close_client()
             raise e
 
 
     async def disconnect(self) -> None:
-        if self._client:
-            await self._client.__aexit__(None, None, None)
-            self._client = None
-
+        await self._safe_close_client()
         self._tools.clear()
         self.status = MCPServerStatus.DISCONNECTED
+
+    async def _safe_close_client(self) -> None:
+        if not self._client:
+            return
+
+        client = self._client
+        self._client = None
+        try:
+            await client.__aexit__(None, None, None)
+        except Exception:
+            # Best effort cleanup; shutdown should continue even if close fails.
+            pass
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]):
         if not self._client or self.status != MCPServerStatus.CONNECTED:
@@ -111,9 +127,3 @@ class MCPClient:
             "output": "\n".join(output),
             "is_error": result.is_error,
         }
-
-
-
-
-
-
