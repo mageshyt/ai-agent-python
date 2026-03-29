@@ -25,8 +25,6 @@ class Session:
         self.updatedAt = datetime.now()
         self._turn_count = 0 # to track the number of turns in the session
 
-        asyncio.create_task(self.initialize())
-
     async def initialize(self):
         await self.mcp_manager.initialize()
         self.mcp_manager.register_tools(self.tool_registry)
@@ -37,4 +35,3 @@ class Session:
         self._turn_count += 1
         self.updatedAt = datetime.now()
         return self._turn_count
-

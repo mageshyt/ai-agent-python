@@ -136,9 +136,11 @@ class Agent:
         result = await self.session.tool_registry.invoke_tool(name, args, self.config.cwd)
         return tc, name, result
     async def __aenter__(self) -> Agent:
+        await self.session.initialize()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        if self.session and self.session.client:
+        if self.session:
             await self.session.client.close()
-            self.session.client = None
+            await self.session.mcp_manager.shutdown()
+            self.session = None
