@@ -20,7 +20,7 @@ from rich.rule import Rule
 from rich import box
 
 from config.config import Config
-from lib.constants import AGENT_ASCII_FONT, AGENT_DISPLAY_NAME, AGENT_TAGLINE
+from lib.contants.config import AGENT_ASCII_FONT, AGENT_DISPLAY_NAME, AGENT_TAGLINE
 from lib.paths import get_relative_path
 from lib.text import truncate_text_by_tokens
 from lib.contants.figures import (
@@ -210,6 +210,22 @@ class TUI:
     def _compact_rule(self) -> Rule:
         """A thin horizontal rule."""
         return Rule(style="border", characters=RULE_CHAR)
+
+    def _code_panel(self, syntax: Syntax, title: str = "", subtitle: str = "") -> Panel:
+        """Wrap a Syntax block in a modern rounded-border panel."""
+        title_text = Text(f" {title} ", style="file") if title else None
+        subtitle_text = Text(f" {subtitle} ", style="muted") if subtitle else None
+        return Panel(
+            syntax,
+            title=title_text,
+            title_align="left",
+            subtitle=subtitle_text,
+            subtitle_align="right",
+            border_style="border",
+            box=box.ROUNDED,
+            padding=(0, 1),
+            expand=True,
+        )
 
     # ─── Welcome / Banner ─────────────────────────────────────────────────
 
@@ -520,18 +536,17 @@ class TUI:
             code_language = self._guess_language(primary_path) if primary_path else "text"
             line_count = len(code_content.splitlines())
 
-            # Compact: summary-only header (no full code dump)
-            header = Text()
-            header.append(primary_path or "file", style="file")
-            header.append("  ", style="muted")
+            # Build title: "filename.py" and subtitle: "lines 1-50 of 200"
+            panel_title = primary_path or "file"
+            subtitle_parts = []
             if show_start is not None and show_end is not None:
-                header.append(f"lines {show_start}–{show_end}", style="muted")
+                subtitle_parts.append(f"lines {show_start}–{show_end}")
                 if total_lines is not None:
-                    header.append(f" of {total_lines}", style="dim")
+                    subtitle_parts.append(f"of {total_lines}")
             elif total_lines is not None:
-                header.append(f"{total_lines} lines", style="muted")
-            header.append(f"  ({line_count} lines read)", style="dim")
-            blocks.append(header)
+                subtitle_parts.append(f"{total_lines} lines")
+            subtitle_parts.append(f"{line_count} lines read")
+            panel_subtitle = "  ".join(subtitle_parts)
 
             # Show max 20 lines preview, collapse the rest
             MAX_PREVIEW_LINES = 20
@@ -540,49 +555,40 @@ class TUI:
                 preview_content = "\n".join(preview_lines[:MAX_PREVIEW_LINES])
                 remaining = len(preview_lines) - MAX_PREVIEW_LINES
                 blocks.append(
-                    Syntax(
-                        preview_content,
-                        lexer=code_language,
-                        theme=CODE_THEME,
-                        line_numbers=True,
-                        start_line=start_line,
-                        word_wrap=False,
+                    self._code_panel(
+                        Syntax(preview_content, lexer=code_language, theme=CODE_THEME, line_numbers=True, start_line=start_line, word_wrap=False),
+                        title=panel_title,
+                        subtitle=panel_subtitle,
                     )
                 )
                 blocks.append(Text(f"  ... {remaining} more lines (truncated)", style="muted italic"))
             else:
                 blocks.append(
-                    Syntax(
-                        code_content,
-                        lexer=code_language,
-                        theme=CODE_THEME,
-                        line_numbers=True,
-                        start_line=start_line,
-                        word_wrap=False,
+                    self._code_panel(
+                        Syntax(code_content, lexer=code_language, theme=CODE_THEME, line_numbers=True, start_line=start_line, word_wrap=False),
+                        title=panel_title,
+                        subtitle=panel_subtitle,
                     )
                 )
         elif tool_name in {"write_file", "edit_file"} and success and diff is not None:
             diff_text = diff.to_diff()
-            header = Text()
-            header.append(primary_path or "file", style="file")
-            header.append("  ", style="muted")
+            # Build subtitle with change stats
             if diff.is_new_file:
                 new_lines = len(diff.new_content.splitlines())
-                header.append(f"new file, {new_lines} lines", style="success")
+                subtitle = f"new file  {new_lines} lines"
             else:
                 old_lines = len(diff.old_content.splitlines())
                 new_lines = len(diff.new_content.splitlines())
                 delta = new_lines - old_lines
                 sign = "+" if delta >= 0 else ""
-                header.append(f"{old_lines} → {new_lines} lines ({sign}{delta})", style="muted")
-            blocks.append(header)
+                subtitle = f"{old_lines} → {new_lines} lines ({sign}{delta})"
+
             if diff_text.strip():
                 blocks.append(
-                    Syntax(
-                        diff_text,
-                        lexer="diff",
-                        theme=CODE_THEME,
-                        word_wrap=False,
+                    self._code_panel(
+                        Syntax(diff_text, lexer="diff", theme=CODE_THEME, word_wrap=False),
+                        title=primary_path or "file",
+                        subtitle=subtitle,
                     )
                 )
             else:
@@ -590,20 +596,16 @@ class TUI:
 
         elif tool_name == "shell":
             command = args.get("command", "")
-
-            if command:
-                blocks.append(Text(f'$ {command}', style="muted"))
-
+            shell_subtitle = ""
             if exit_code is not None:
-                blocks.append(Text(f"Exit code: {exit_code}", style="muted"))
+                shell_subtitle = f"exit {exit_code}"
 
             display_output = truncate_text_by_tokens(output, self._max_block_tokens)
             blocks.append(
-                Syntax(
-                    display_output,
-                    lexer="text",
-                    theme=CODE_THEME,
-                    word_wrap=False,
+                self._code_panel(
+                    Syntax(display_output, lexer="text", theme=CODE_THEME, word_wrap=False),
+                    title=f"$ {command}" if command else "shell",
+                    subtitle=shell_subtitle,
                 )
             )
 
@@ -737,34 +739,24 @@ class TUI:
         elif tool_name == "web_scrap" and success:
             url = metadata.get("url", args.get("url", "")) if isinstance(metadata, dict) else args.get("url", "")
             status_code = metadata.get("status_code") if isinstance(metadata, dict) else None
-
-            header = Text()
-            if url:
-                header.append("URL: ", style="muted")
-                header.append(f"{url}  ", style="path")
-            if status_code is not None:
-                header.append("Status: ", style="muted")
-                status_color = "success" if 200 <= status_code < 300 else "error"
-                icon = TOOL_ICON_SUCCESS if 200 <= status_code < 300 else TOOL_ICON_ERROR
-                header.append(f"{status_code} {icon}  ", style=status_color)
-
             out_len = len(output)
-            header.append("Length: ", style="muted")
-            header.append(f"{out_len} chars  ", style="dim white")
 
+            # Build subtitle with status and length
+            subtitle_parts = []
+            if status_code is not None:
+                icon = TOOL_ICON_SUCCESS if 200 <= status_code < 300 else TOOL_ICON_ERROR
+                subtitle_parts.append(f"{status_code} {icon}")
+            subtitle_parts.append(f"{out_len} chars")
             if truncated:
-                header.append("(Truncated)", style="warning")
-
-            blocks.append(header)
+                subtitle_parts.append("truncated")
 
             output_display = truncate_text_by_tokens(output, self._max_block_tokens)
 
             blocks.append(
-                Syntax(
-                    output_display,
-                    lexer="html",
-                    theme=CODE_THEME,
-                    word_wrap=False,
+                self._code_panel(
+                    Syntax(output_display, lexer="html", theme=CODE_THEME, word_wrap=False),
+                    title=url or "web",
+                    subtitle="  ".join(subtitle_parts),
                 )
             )
 
@@ -801,22 +793,17 @@ class TUI:
             action = args.get("action", "")
             key = args.get("key", "")
 
-            summary = []
-            if isinstance(action, str) and action:
-                summary.append(f"Action: {action.capitalize()}")
-            if isinstance(key, str) and key:
-                summary.append(f"Key: {key}")
-            if summary:
-                blocks.append(Text("  ".join(summary), style="muted"))
+            mem_title = f"memory:{key}" if key else "memory"
+            mem_subtitle = action.capitalize() if isinstance(action, str) and action else ""
+            lexer = "json" if action == "get" else "text"
 
             output_display = truncate_text_by_tokens(output, self._max_block_tokens)
 
             blocks.append(
-                Syntax(
-                    output_display,
-                    lexer="json" if action == "get" else "text",
-                    theme=CODE_THEME,
-                    word_wrap=False,
+                self._code_panel(
+                    Syntax(output_display, lexer=lexer, theme=CODE_THEME, word_wrap=False),
+                    title=mem_title,
+                    subtitle=mem_subtitle,
                 )
             )
 
