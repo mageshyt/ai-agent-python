@@ -48,7 +48,7 @@ class MCPManager:
         
         connection_tasks = [
                 asyncio.wait_for(client.connect(),timeout = client.config.startup_timeout)
-                for name, client in self._clients.items()
+                for _ , client in self._clients.items()
         ]
 
         await asyncio.gather(*connection_tasks, return_exceptions=True)
@@ -76,6 +76,8 @@ class MCPManager:
         return registered_count
 
     async def shutdown(self):
+        if not self._initialized:
+            return
         shutdown_tasks = [
                 client.disconnect() for client in self._clients.values()
         ]
@@ -83,4 +85,3 @@ class MCPManager:
         await asyncio.gather(*shutdown_tasks, return_exceptions=True)   
         self._clients.clear()
         self._initialized = False
-
