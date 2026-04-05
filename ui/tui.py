@@ -1,7 +1,9 @@
 import json as _json
 import importlib
+import random
 import re
 import time
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -14,89 +16,117 @@ from rich.spinner import Spinner
 from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
+from rich.rule import Rule
 from rich import box
 
 from config.config import Config
-from lib.constants import AGENT_ASCII_FONT, AGENT_CHARACTER, AGENT_DISPLAY_NAME, AGENT_TAGLINE
+from lib.constants import AGENT_ASCII_FONT, AGENT_DISPLAY_NAME, AGENT_TAGLINE
 from lib.paths import get_relative_path
 from lib.text import truncate_text_by_tokens
+from lib.contants.figures import (
+    BLACK_CIRCLE,
+    BLOCKQUOTE_BAR,
+    BULLET_OPERATOR,
+    DIAMOND_FILLED,
+    DIAMOND_OPEN,
+    HEAVY_HORIZONTAL,
+    PLAY_ICON,
+    TEARDROP_ASTERISK,
+)
 from tools.base import FileDiff, ToolKind
+
+# -- Import SPINNER_VERBS from the hyphenated module name ----------------
+_spinner_mod = importlib.import_module("lib.contants.spinner-verbs")
+SPINNER_VERBS: list[str] = getattr(_spinner_mod, "SPINNER_VERBS", ["Thinking"])
 
 # Syntax highlight theme used for all code blocks
 CODE_THEME = "monokai"
 
-# Icon used for all tool call starts
-TOOL_ICON = "⏺"
-TOOL_ICON_SUCCESS = "✓"
-TOOL_ICON_ERROR   = "✗"
+# Icons from figures.py
+TOOL_ICON = BLACK_CIRCLE         # ⏺ tool call indicator
+TOOL_ICON_SUCCESS = DIAMOND_FILLED  # ◆ completed
+TOOL_ICON_ERROR   = "✗"          # failure
+TOOL_RUNNING = DIAMOND_OPEN      # ◇ running
+ASSISTANT_ICON = TEARDROP_ASTERISK  # ✻ assistant reply indicator
+AGENT_PLAY = PLAY_ICON           # ▶ agent started
+SEPARATOR = BULLET_OPERATOR      # ∙ separator
+
+# Left bar character used for indented output (Claude Code style)
+LEFT_BAR = BLOCKQUOTE_BAR
+RULE_CHAR = HEAVY_HORIZONTAL
 
 # Arg keys whose values are too large to display untruncated
 _LARGE_VALUE_KEYS = {"content", "old_string", "new_string", "text", "body"}
 _MAX_ARG_LEN = 120
 
+# ─── Cyan / Teal color palette ────────────────────────────────────────────
 AGENT_THEME = Theme({
     # Agent and assistant styles
-    "assistant": "bold cyan",
+    "assistant": "bold #22d3ee",
     "user": "bold green",
     "system": "bold yellow",
-    "agent": "bold magenta",
-    
+    "agent": "bold #06b6d4",
+
     # Status and feedback
-    "success": "bold green",
-    "error": "bold red",
-    "warning": "bold yellow",
-    "info": "bold blue",
+    "success": "bold #86efac",
+    "error": "bold #f87171",
+    "warning": "bold #fbbf24",
+    "info": "bold #67e8f9",
     "muted": "gray50",
-    
+
     # Agent states
-    "thinking": "italic cyan",
-    "working": "bold blue",
-    "done": "bold green",
-    "failed": "bold red",
-    
+    "thinking": "italic #67e8f9",
+    "working": "bold #22d3ee",
+    "done": "bold #86efac",
+    "failed": "bold #f87171",
+
     # Tools and actions
-    "tool": "bold yellow",
-    "tool.name": "bold bright_yellow",
-    "tool.read": "cyan",
-    "tool.write": "yellow",
-    "tool.shell": "magenta",
-    "tool.network": "blue",
-    "tool.memory": "green",
-    "tool.mcp": "bright_cyan",
-    "tool.start": "dim yellow",
-    "tool.result": "dim green",
-    
+    "tool": "bold #0891b2",
+    "tool.name": "bold #cffafe",
+    "tool.read": "#67e8f9",
+    "tool.write": "#fbbf24",
+    "tool.shell": "#22d3ee",
+    "tool.network": "#38bdf8",
+    "tool.memory": "#86efac",
+    "tool.mcp": "#67e8f9",
+    "tool.start": "dim #67e8f9",
+    "tool.result": "dim #86efac",
+
     # Code and technical
     "code": "bright_white on grey23",
-    "command": "bold bright_cyan",
-    "path": "underline bright_blue",
-    "file": "cyan",
-    
-    # Subagents
-    "subagent": "bold magenta",
-    "subagent.ask": "bold bright_cyan",
-    "subagent.review": "bold bright_magenta",
-    "subagent.plan": "bold bright_yellow",
-    
-    # UI elements
-    "prompt": "bold white",
-    "border": "grey35",
+    "command": "bold #22d3ee",
+    "path": "underline #67e8f9",
+    "file": "#a5f3fc",
 
+    # Subagents
+    "subagent": "bold #0891b2",
+    "subagent.ask": "bold #67e8f9",
+    "subagent.review": "bold #22d3ee",
+    "subagent.plan": "bold #cffafe",
+
+    # UI elements
+    "prompt": "bold #22d3ee",
+    "border": "#155e75",
     "highlight": "bold bright_white",
     "dim": "dim white",
-    
+
+    # Left bar for Claude-style output blocks
+    "leftbar": "#0891b2",
+    "leftbar.success": "#86efac",
+    "leftbar.error": "#f87171",
+
     # Progress and stats
-    "progress": "bright_blue",
-    "stat.label": "dim cyan",
+    "progress": "#67e8f9",
+    "stat.label": "dim #a5f3fc",
     "stat.value": "bold white",
-    
+
     # Special
-    "checkpoint": "bold bright_green",
-    "session": "bold bright_blue",
-    "mcp": "bold magenta",
+    "checkpoint": "bold #86efac",
+    "session": "bold #67e8f9",
+    "mcp": "bold #0891b2",
 })
 
-_console : Console | None = None
+_console: Console | None = None
 def get_console():
     global _console
     if _console is None:
@@ -104,18 +134,84 @@ def get_console():
     return _console
 
 
+def _random_verb() -> str:
+    """Pick a random spinner verb from the fun list."""
+    return random.choice(SPINNER_VERBS)
+
+
 class TUI:
-    def __init__(self, console: Console | None = None,config: Config | None = None) -> None:
+    def __init__(self, console: Console | None = None, config: Config | None = None) -> None:
         self.console = console if console else get_console()
         self._assistant_stream_open = False
-        self._buffer = "" 
+        self._buffer = ""
         self._use_markdown = True
-        self._last_render_pos = 0 
-        self._live_display = None  
-        self._tool_args_by_call_id : dict[str, dict[str, Any]] = {}
+        self._live_display = None
+        self._verb_timer: threading.Timer | None = None
+        self._spinner_style: str = "thinking"      # current spinner style
+        self._spinner_prefix: str = ""              # e.g. "▶ AgentName ∙ "
+        self._tool_args_by_call_id: dict[str, dict[str, Any]] = {}
         self.config = config
         self.cwd = config.cwd
         self._max_block_tokens = 2000
+
+    # ─── Helpers ──────────────────────────────────────────────────────────
+
+    def _start_verb_rotation(self, style: str = "thinking", prefix: str = "", interval: float = 2.0) -> None:
+        """Start a repeating timer that cycles the spinner verb every `interval` seconds."""
+        self._stop_verb_rotation()  # cancel any existing timer
+        self._spinner_style = style
+        self._spinner_prefix = prefix
+
+        def _tick():
+            if self._live_display is not None and self._buffer == "":
+                verb = _random_verb()
+                self._live_display.update(
+                    Spinner("dots", text=f"[{self._spinner_style}]{self._spinner_prefix}{verb}...[/]", style=self._spinner_style)
+                )
+            # Re-schedule
+            self._verb_timer = threading.Timer(interval, _tick)
+            self._verb_timer.daemon = True
+            self._verb_timer.start()
+
+        self._verb_timer = threading.Timer(interval, _tick)
+        self._verb_timer.daemon = True
+        self._verb_timer.start()
+
+    def _stop_verb_rotation(self) -> None:
+        """Cancel the verb rotation timer."""
+        if self._verb_timer is not None:
+            self._verb_timer.cancel()
+            self._verb_timer = None
+
+    def _left_bar_renderable(self, renderable, style: str = "leftbar"):
+        """Wrap a Rich renderable with a left-border-only panel.
+        
+        Uses HEAVY_HEAD box customization so only the left edge shows the bar.
+        """
+        # Create a custom box that only shows the left border
+        LEFT_ONLY = box.Box(
+            "    \n"
+            f"{LEFT_BAR}   \n"
+            "    \n"
+            f"{LEFT_BAR}   \n"
+            f"{LEFT_BAR}   \n"
+            "    \n"
+            f"{LEFT_BAR}   \n"
+            "    \n"
+        )
+        return Panel(
+            renderable,
+            border_style=style,
+            box=LEFT_ONLY,
+            padding=(0, 1),
+            expand=True,
+        )
+
+    def _compact_rule(self) -> Rule:
+        """A thin horizontal rule."""
+        return Rule(style="border", characters=RULE_CHAR)
+
+    # ─── Welcome / Banner ─────────────────────────────────────────────────
 
     def print_welcome(self, title: str, lines: list[str]) -> None:
         body = "\n".join(lines)
@@ -133,23 +229,22 @@ class TUI:
     def show_welcome_message(self) -> None:
         owl_art = self._build_ascii_banner(AGENT_DISPLAY_NAME)
 
-        # Startup animation
-        with self.console.status("[working]Booting interface...[/]", spinner="dots"):
+        # Startup animation with a random verb
+        with self.console.status(f"[working]{_random_verb()}...[/]", spinner="dots"):
             time.sleep(0.25)
 
-        # Gradient ASCII banner
+        # ASCII banner with gradient
         banner = self._gradient_text(
             owl_art,
-            start=(58, 134, 255),
-            end=(255, 99, 172),
+            start=(8, 145, 178),    # dark cyan #0891b2
+            end=(103, 232, 249),    # light cyan #67e8f9
             bold=True,
         )
         self.console.print()
         self.console.print(banner)
-        self.console.print(Text(AGENT_TAGLINE, style="dim", justify="left"))
         self.console.print()
 
-        # Info grid: model + cwd
+        # Info grid: model + cwd (compact, no panel)
         info = Table.grid(padding=(0, 2))
         info.add_column(style="stat.label", no_wrap=True)
         info.add_column(style="stat.value")
@@ -160,29 +255,16 @@ class TUI:
 
         info.add_row("Model", f"{model_name}  [dim](temp {temperature})[/dim]")
         info.add_row("Directory", cwd)
-        info.add_row("Character", AGENT_CHARACTER)
 
-        self.console.print(
-            Panel(
-                info,
-                border_style="bright_blue",
-                box=box.ROUNDED,
-                padding=(0, 2),
-            )
-        )
+        self.console.print(info)
+        self.console.print()
 
         # Quick-start hint line
         self.console.print(
             Text.assemble(
-                ("  Ask questions, edit files, run commands  ", "dim"),
-                ("•", "muted"),
-                ("  ", "dim"),
+                ("  Type a message or ", "dim"),
                 ("/help", "command"),
-                (" for commands  ", "dim"),
-                ("•", "muted"),
-                ("  ", "dim"),
-                ("Enter", "bold white"),
-                (" to submit", "dim"),
+                (" for commands", "dim"),
             )
         )
         self.console.print()
@@ -195,7 +277,6 @@ class TUI:
             figlet = Figlet(font=AGENT_ASCII_FONT)
             return figlet.renderText(title).rstrip("\n")
         except Exception:
-            
             return """  ░██████  ░██     ░██ ░████████   ░██████████ ░█████████    ░██████   ░██       ░██ ░██         
  ░██   ░██  ░██   ░██  ░██    ░██  ░██         ░██     ░██  ░██   ░██  ░██       ░██ ░██         
 ░██          ░██ ░██   ░██    ░██  ░██         ░██     ░██ ░██     ░██ ░██  ░██  ░██ ░██         
@@ -209,7 +290,7 @@ class TUI:
         lines = text.splitlines()
         visible_chars = sum(1 for ch in text if ch not in {"\n", " "})
         if visible_chars <= 1:
-            return Text(text, style="bold cyan" if bold else "cyan")
+            return Text(text, style="bold #22d3ee" if bold else "#22d3ee")
 
         out = Text()
         idx = 0
@@ -233,78 +314,93 @@ class TUI:
                 out.append("\n")
 
         return out
+
+    # ─── Assistant Streaming ──────────────────────────────────────────────
+
     def begin_assistant(self) -> None:
         self.console.print()
         self._assistant_stream_open = True
         self._buffer = ""
-        self._last_render_pos = 0
+        verb = _random_verb()
         self._live_display = Live(
-            Spinner("dots", text="[thinking]Thinking...[/]", style="thinking"),
+            Spinner("dots", text=f"[thinking]{verb}...[/]", style="thinking"),
             console=self.console,
             refresh_per_second=15,
             vertical_overflow="visible",
             transient=True,
         )
         self._live_display.start()
+        self._start_verb_rotation(style="thinking")
 
     def end_assistant(self) -> None:
+        self._stop_verb_rotation()
         if self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
         self._assistant_stream_open = False
         self._buffer = ""
-        self._last_render_pos = 0
 
     def stream_assistant_delta(self, content: str) -> None:
         self._buffer += content
         if not self._assistant_stream_open:
             return
 
-        if self._live_display is None:
-            self._live_display = Live(
-                Markdown(self._buffer) if self._buffer else Spinner("dots", text="[thinking]Thinking...[/]", style="thinking"),
-                console=self.console,
-                refresh_per_second=15,
-                vertical_overflow="visible",
-                transient=True,
+        if self._live_display is not None:
+            self._stop_verb_rotation()  # stop rotating once text starts streaming
+            grp_msg = Group(
+                Text(ASSISTANT_ICON, style="assistant",end=" "),
+                Markdown(self._buffer)
             )
-            self._live_display.start()
+            self._live_display.update(grp_msg)
 
-        self._live_display.update(Markdown(self._buffer))
-    
     def assistant_thinking(self, message: str = "Thinking") -> None:
+        verb = _random_verb()
         if self._live_display is not None:
             self._live_display.update(
-                Spinner("dots", text=f"[thinking]{message}...[/]", style="thinking")
+                Spinner("dots", text=f"[thinking]{verb}...[/]", style="thinking")
             )
-    
+            self._start_verb_rotation(style="thinking")
+
     def stop_thinking(self) -> None:
+        self._stop_verb_rotation()
         if self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
-    
+
     def agent_started(self, agent_name: str, message: str) -> None:
         if self._live_display is not None:
+            verb = _random_verb()
             self._live_display.update(
-                Spinner("dots", text=f"[working]▶ {agent_name}...[/]", style="working")
+                Spinner("dots", text=f"[working]{AGENT_PLAY} {agent_name} {SEPARATOR} {verb}...[/]", style="working")
             )
-    
+            self._start_verb_rotation(style="working", prefix=f"{AGENT_PLAY} {agent_name} {SEPARATOR} ")
+
     def agent_finished(self, agent_name: str, response: str | None = None) -> None:
+        self._stop_verb_rotation()
         if self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
         self.console.print()
-            
-    
+
     def agent_error(self, message: str) -> None:
         """Display agent errors"""
+        self._stop_verb_rotation()
         if self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
-        self.console.print(f"[error]✗ Error:[/] {message}")
-    
+        self.console.print(
+            Text.assemble(
+                (f"  {TOOL_ICON_ERROR} ", "error"),
+                ("Error: ", "error"),
+                (message, "dim white"),
+            )
+        )
+
+    # ─── Assistant Final Text ─────────────────────────────────────────────
+
     def text_complete(self, content: str) -> None:
-        """Persist the final assistant response for non-tool turns."""
+        """Persist the final assistant response with ✻ prefix."""
+        self._stop_verb_rotation()
         if self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
@@ -313,23 +409,29 @@ class TUI:
             self._buffer = ""
             return
 
-        is_simple_line = (
-            "\n" not in content
-            and not any(token in content for token in ["#", "`", "*", "|", "[", "]", "(", ")"])
-        )
-
-        if is_simple_line:
-            self.console.print(Text.assemble(("✦ ", "assistant"), (content.strip(), "dim white")))
-        elif self._use_markdown:
-            self.console.print(Markdown(content))
+        if self._use_markdown:
+            # Prepend ✻ into the markdown so it renders inline
+            grp_msg = Group(
+                Text(ASSISTANT_ICON, style="assistant",end=" "),
+                Markdown(content)
+            )
+            self.console.print(grp_msg)
         else:
-            self.console.print(Text(content, style="dim white"))
+            self.console.print(
+                Text.assemble(
+                    (f"{ASSISTANT_ICON} ", "assistant"),
+                    (content.strip(), "dim white"),
+                )
+            )
 
         self._buffer = ""
-    
+
+    # ─── Tool Calls — Compact Claude Code Style ──────────────────────────
+
     def tool_call_started(self, call_id: str, tool_name: str, arguments: dict[str, Any], tool_kind: str | ToolKind) -> None:
         self._tool_args_by_call_id[call_id] = arguments
 
+        self._stop_verb_rotation()
         if self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
@@ -340,20 +442,18 @@ class TUI:
             else:
                 self.console.print(Text(self._buffer.strip(), style="dim white"))
 
-        # Clear buffered assistant text when entering a tool call so previous
-        # planning text is not re-rendered after each tool result.
+        # Clear buffered assistant text
         self._buffer = ""
 
         kind_str = tool_kind.value if hasattr(tool_kind, "value") else str(tool_kind)
-        border_style = f"tool.{kind_str}" if f"tool.{kind_str}" in AGENT_THEME.styles else "tool"
+        tool_style = f"tool.{kind_str}" if f"tool.{kind_str}" in AGENT_THEME.styles else "tool"
 
-        title = Text.assemble(
-            (f"{TOOL_ICON} ", "muted"),
-            (tool_name, "tool"),
-            ("  ", "muted"),
-            (f"#{call_id[:8]}", "muted"),
-        )
+        # === Compact header line: ⏺ tool_name ===
+        header = Text()
+        header.append(f"  {TOOL_ICON} ", style=tool_style)
+        header.append(tool_name, style="tool.name")
 
+        # Show primary arg inline on the header line
         display_args = dict(arguments)
         primary_path: str | None = None
         for key in ("path", "cwd"):
@@ -362,29 +462,30 @@ class TUI:
                 if key == "path":
                     primary_path = display_args[key]
 
-        subtitle = Text(primary_path, style="path") if primary_path else Text("running…", style="muted")
+        if primary_path:
+            header.append(f" {SEPARATOR} ", style="muted")
+            header.append(primary_path, style="path")
 
-        tool_panel = Panel(
-            self._render_args_table(tool_name, display_args) if display_args else Text("No arguments", style="muted"),
-            title=title,
-            title_align="left",
-            subtitle=subtitle,
-            subtitle_align="right",
-            border_style=border_style,
-            box=box.ROUNDED,
-            padding=(0, 2),
-        )
+        self.console.print(header)
 
-        self.console.print(tool_panel)
+        # === Indented args with left bar ===
+        if display_args:
+            args_table = self._render_args_table(tool_name, display_args)
+            self.console.print(
+                self._left_bar_renderable(args_table, style=tool_style)
+            )
 
         # Spinner while the tool executes
+        verb = _random_verb()
         self._live_display = Live(
-            Spinner("dots", text=f"[{border_style}]{TOOL_ICON} {tool_name} running…[/]"),
+            Spinner("dots", text=f"[{tool_style}]  {LEFT_BAR} {verb}...[/]"),
             console=self.console,
             refresh_per_second=10,
             vertical_overflow="visible",
+            transient=True,
         )
         self._live_display.start()
+        self._start_verb_rotation(style=tool_style, prefix=f"  {LEFT_BAR} ")
 
     def tool_call_finished(
         self,
@@ -400,16 +501,8 @@ class TUI:
         exit_code: int | None = None,
     ) -> None:
         kind_str = tool_kind.value if tool_kind and hasattr(tool_kind, "value") else str(tool_kind or "")
-        border_style = f"tool.{kind_str}" if kind_str and f"tool.{kind_str}" in AGENT_THEME.styles else "tool"
-        status_icon = TOOL_ICON_SUCCESS if success else TOOL_ICON_ERROR
-        status_style = "success" if success else "error"
+        tool_style = f"tool.{kind_str}" if kind_str and f"tool.{kind_str}" in AGENT_THEME.styles else "tool"
 
-        title = Text.assemble(
-            (f"{status_icon} ", status_style),
-            (tool_name, "tool"),
-            ("  ", "muted"),
-            (f"#{call_id[:8]}", "muted"),
-        )
         args = self._tool_args_by_call_id.get(call_id, {})
 
         primary_path: str | None = None
@@ -425,8 +518,9 @@ class TUI:
             show_end   = metadata.get("end_line")   if metadata else None
             total_lines = metadata.get("total_lines") if metadata else None
             code_language = self._guess_language(primary_path) if primary_path else "text"
+            line_count = len(code_content.splitlines())
 
-            # File + range header
+            # Compact: summary-only header (no full code dump)
             header = Text()
             header.append(primary_path or "file", style="file")
             header.append("  ", style="muted")
@@ -436,18 +530,38 @@ class TUI:
                     header.append(f" of {total_lines}", style="dim")
             elif total_lines is not None:
                 header.append(f"{total_lines} lines", style="muted")
+            header.append(f"  ({line_count} lines read)", style="dim")
             blocks.append(header)
-            blocks.append(
-                Syntax(
-                    code_content,
-                    lexer=code_language,
-                    theme=CODE_THEME,
-                    line_numbers=True,
-                    start_line=start_line,
-                    word_wrap=False,
+
+            # Show max 20 lines preview, collapse the rest
+            MAX_PREVIEW_LINES = 20
+            preview_lines = code_content.splitlines()
+            if len(preview_lines) > MAX_PREVIEW_LINES:
+                preview_content = "\n".join(preview_lines[:MAX_PREVIEW_LINES])
+                remaining = len(preview_lines) - MAX_PREVIEW_LINES
+                blocks.append(
+                    Syntax(
+                        preview_content,
+                        lexer=code_language,
+                        theme=CODE_THEME,
+                        line_numbers=True,
+                        start_line=start_line,
+                        word_wrap=False,
+                    )
                 )
-            )
-        elif tool_name in { "write_file", "edit_file" } and success and diff is not None:
+                blocks.append(Text(f"  ... {remaining} more lines (truncated)", style="muted italic"))
+            else:
+                blocks.append(
+                    Syntax(
+                        code_content,
+                        lexer=code_language,
+                        theme=CODE_THEME,
+                        line_numbers=True,
+                        start_line=start_line,
+                        word_wrap=False,
+                    )
+                )
+        elif tool_name in {"write_file", "edit_file"} and success and diff is not None:
             diff_text = diff.to_diff()
             header = Text()
             header.append(primary_path or "file", style="file")
@@ -473,7 +587,7 @@ class TUI:
                 )
             else:
                 blocks.append(Text("(no changes)", style="muted"))
-        
+
         elif tool_name == "shell":
             command = args.get("command", "")
 
@@ -482,15 +596,15 @@ class TUI:
 
             if exit_code is not None:
                 blocks.append(Text(f"Exit code: {exit_code}", style="muted"))
-            
-            display_output = truncate_text_by_tokens(output,self._max_block_tokens)
+
+            display_output = truncate_text_by_tokens(output, self._max_block_tokens)
             blocks.append(
-                    Syntax(
-                        display_output,
-                        lexer="text",
-                        theme=CODE_THEME,
-                        word_wrap=False,
-                    )
+                Syntax(
+                    display_output,
+                    lexer="text",
+                    theme=CODE_THEME,
+                    word_wrap=False,
+                )
             )
 
         elif tool_name == "list_dir" and success:
@@ -498,28 +612,27 @@ class TUI:
             path = metadata.get("path") if isinstance(metadata, dict) else None
             summary = []
 
-            if isinstance(path,str):
-                summary.append(str(get_relative_path(path,self.cwd)))
+            if isinstance(path, str):
+                summary.append(str(get_relative_path(path, self.cwd)))
             if isinstance(entries, list):
                 summary.append(f"{len(entries)} items")
             if summary:
                 blocks.append(Text("  ".join(summary), style="muted"))
 
-            output_display = truncate_text_by_tokens(output,self._max_block_tokens)
-            
+            output_display = truncate_text_by_tokens(output, self._max_block_tokens)
+
             # Custom formatting for list_dir output
             list_text = Text()
-            import re
             for line in output_display.splitlines():
                 if not line:
                     continue
-                
-                # Match tree prefixes (e.g. "├── ", "│   ", "└── ")
+
+            # Match tree prefixes (e.g. "├── ", "│   ", "└── ")
                 tree_match = re.match(r"^([│ \t├─└]+)(.*)$", line)
                 if tree_match:
                     prefix, name = tree_match.groups()
                     list_text.append(prefix, style="dim")
-                    
+
                     if "[ignored]" in name:
                         list_text.append(name, style="muted")
                     elif name.endswith("/"):
@@ -533,15 +646,8 @@ class TUI:
                         list_text.append(line + "\n", style="path")
                     else:
                         list_text.append(line + "\n", style="file")
-            
-            blocks.append(
-                Panel(
-                    list_text,
-                    border_style="border",
-                    box=box.MINIMAL,
-                    padding=(0, 1)
-                )
-            )
+
+            blocks.append(list_text)
 
         elif tool_name == "grep" and success:
             files_searched = metadata.get("files_searched") if isinstance(metadata, dict) else None
@@ -554,15 +660,15 @@ class TUI:
             if summary:
                 blocks.append(Text("  ".join(summary), style="muted"))
 
-            output_display = truncate_text_by_tokens(output,self._max_block_tokens)
-            
+            output_display = truncate_text_by_tokens(output, self._max_block_tokens)
+
             # Custom formatting for grep output
             grep_text = Text()
             for line in output_display.splitlines():
                 if not line.strip():
                     grep_text.append("\n")
                     continue
-                    
+
                 parts = line.split(":", 2)
                 if len(parts) >= 3 and parts[1].isdigit():
                     file_path, line_num, content = parts[0], parts[1], parts[2]
@@ -570,35 +676,27 @@ class TUI:
                     grep_text.append(":", style="dim")
                     grep_text.append(line_num, style="success")
                     grep_text.append(":", style="dim")
-                    # add space so content doesn't crash into colon
                     grep_text.append(f" {content}\n", style="dim white")
                 else:
                     grep_text.append(line + "\n", style="dim white")
-                    
-            blocks.append(
-                Panel(
-                    grep_text,
-                    border_style="border",
-                    box=box.MINIMAL,
-                    padding=(0, 1)
-                )
-            )
+
+            blocks.append(grep_text)
 
         elif tool_name == "glob" and success:
             files_matched = metadata.get("files_matched", 0) if isinstance(metadata, dict) else 0
             pattern = metadata.get("pattern", "") if isinstance(metadata, dict) else ""
-            
+
             summary = []
             if pattern:
                 summary.append(f"Pattern: '{pattern}'")
             if files_matched is not None:
                 summary.append(f"({files_matched} matches)")
-            
+
             if summary:
                 blocks.append(Text("  ".join(summary), style="muted"))
-                
+
             output_display = truncate_text_by_tokens(output, self._max_block_tokens)
-            
+
             glob_text = Text()
             for line in output_display.splitlines():
                 if not line.strip():
@@ -608,37 +706,30 @@ class TUI:
                 else:
                     glob_text.append("• ", style="dim")
                     glob_text.append(f"{line}\n", style="file")
-                    
-            blocks.append(
-                Panel(
-                    glob_text,
-                    border_style="border",
-                    box=box.MINIMAL,
-                    padding=(0, 1)
-                )
-            )
-            
+
+            blocks.append(glob_text)
+
         elif tool_name == "web_search" and success:
             query = metadata.get("query", "") if isinstance(metadata, dict) else ""
             results = metadata.get("results", []) if isinstance(metadata, dict) else []
-            
+
             if query:
                 blocks.append(Text(f"Search query: {query}", style="muted"))
-                
+
             if results:
                 for i, res in enumerate(results):
                     title = res.get("title", "No Title")
                     url = res.get("url", "")
                     desc = res.get("description", "")
-                    
+
                     item = Text()
-                    item.append(f"{i+1}. ", style="bold bright_blue")
+                    item.append(f"{i+1}. ", style="bold #67e8f9")
                     item.append(f"{title}\n", style="bold white")
-                    item.append(f"   {url}\n", style="cyan")
-                    
+                    item.append(f"   {url}\n", style="#a5f3fc")
+
                     clean_desc = " ".join(desc.split())
                     item.append(f"   {clean_desc}", style="dim white")
-                    
+
                     blocks.append(item)
             else:
                 blocks.append(Text("No results found.", style="muted"))
@@ -646,7 +737,7 @@ class TUI:
         elif tool_name == "web_scrap" and success:
             url = metadata.get("url", args.get("url", "")) if isinstance(metadata, dict) else args.get("url", "")
             status_code = metadata.get("status_code") if isinstance(metadata, dict) else None
-            
+
             header = Text()
             if url:
                 header.append("URL: ", style="muted")
@@ -654,9 +745,9 @@ class TUI:
             if status_code is not None:
                 header.append("Status: ", style="muted")
                 status_color = "success" if 200 <= status_code < 300 else "error"
-                icon = "✓" if 200 <= status_code < 300 else "✗"
+                icon = TOOL_ICON_SUCCESS if 200 <= status_code < 300 else TOOL_ICON_ERROR
                 header.append(f"{status_code} {icon}  ", style=status_color)
-                
+
             out_len = len(output)
             header.append("Length: ", style="muted")
             header.append(f"{out_len} chars  ", style="dim white")
@@ -665,20 +756,15 @@ class TUI:
                 header.append("(Truncated)", style="warning")
 
             blocks.append(header)
-                
+
             output_display = truncate_text_by_tokens(output, self._max_block_tokens)
-            
+
             blocks.append(
-                Panel(
-                    Syntax(
-                        output_display,
-                        lexer="html",
-                        theme=CODE_THEME,
-                        word_wrap=False,
-                    ),
-                    border_style="border",
-                    box=box.MINIMAL,
-                    padding=(0, 1)
+                Syntax(
+                    output_display,
+                    lexer="html",
+                    theme=CODE_THEME,
+                    word_wrap=False,
                 )
             )
 
@@ -707,17 +793,10 @@ class TUI:
                     else:
                         todo_text.append(line + "\n", style="dim white")
 
-                blocks.append(
-                    Panel(
-                        todo_text,
-                        border_style="border",
-                        box=box.MINIMAL,
-                        padding=(0, 1)
-                    )
-                )
+                blocks.append(todo_text)
             else:
                 blocks.append(Text(output_display, style="dim white"))
-        
+
         elif tool_name == "memory" and success:
             action = args.get("action", "")
             key = args.get("key", "")
@@ -733,16 +812,11 @@ class TUI:
             output_display = truncate_text_by_tokens(output, self._max_block_tokens)
 
             blocks.append(
-                Panel(
-                    Syntax(
-                        output_display,
-                        lexer="json" if action == "get" else "text",
-                        theme=CODE_THEME,
-                        word_wrap=False,
-                    ),
-                    border_style="border",
-                    box=box.MINIMAL,
-                    padding=(0, 1)
+                Syntax(
+                    output_display,
+                    lexer="json" if action == "get" else "text",
+                    theme=CODE_THEME,
+                    word_wrap=False,
                 )
             )
 
@@ -774,109 +848,126 @@ class TUI:
         if truncated:
             blocks.append(Text(" output truncated", style="muted italic"))
 
-        subtitle = Text("done" if success else "failed", style=status_style)
-        if primary_path and tool_name != "read_file":
-            subtitle = Text(primary_path, style="path")
-
-        result_panel = Panel(
-            Group(*blocks),
-            title=title,
-            title_align="left",
-            subtitle=subtitle,
-            subtitle_align="right",
-            border_style=border_style,
-            box=box.ROUNDED,
-            padding=(0, 1),
-        )
-
+        self._stop_verb_rotation()
         if self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
 
-        self.console.print(result_panel)
+        # === Print output with left bar (Claude Code style — no status line) ===
+        if blocks:
+            self.console.print(
+                self._left_bar_renderable(Group(*blocks), style=tool_style)
+            )
 
-        # Resume assistant streaming area so subsequent text deltas remain visible.
+        # Resume assistant streaming area (preserve buffer for text between tool calls)
         if self._assistant_stream_open and self._live_display is None:
-            self._buffer = ""
             self._live_display = Live(
-                Spinner("dots", text="[thinking]Thinking...[/]", style="thinking"),
+                Spinner("dots", text=f"[thinking]{_random_verb()}...[/]", style="thinking"),
                 console=self.console,
                 refresh_per_second=15,
                 vertical_overflow="visible",
                 transient=True,
             )
             self._live_display.start()
+            self._start_verb_rotation(style="thinking")
 
     def subagent_started(self, subagent_name: str) -> None:
         """Display when a subagent is invoked"""
         style = f"subagent.{subagent_name}" if f"subagent.{subagent_name}" in AGENT_THEME.styles else "subagent"
-        self.console.print(f"[{style}]◆ Invoking {subagent_name} subagent[/]")
-    
+        self.console.print(
+            Text.assemble(
+                (f"  {DIAMOND_FILLED} ", style),
+                ("Invoking ", "muted"),
+                (subagent_name, style),
+                (" subagent", "muted"),
+            )
+        )
+
     def info(self, message: str) -> None:
         """Display info message"""
-        self.console.print(f"[info]ℹ {message}[/]")
-    
+        self.console.print(
+            Text.assemble(
+                ("  ℹ ", "info"),
+                (message, "dim white"),
+            )
+        )
+
     def success(self, message: str) -> None:
         """Display success message"""
-        self.console.print(f"[success]✓ {message}[/]")
-    
+        self.console.print(
+            Text.assemble(
+                (f"  {TOOL_ICON_SUCCESS} ", "success"),
+                (message, "dim white"),
+            )
+        )
+
     def warning(self, message: str) -> None:
         """Display warning message"""
-        self.console.print(f"[warning]⚠ {message}[/]")
+        self.console.print(
+            Text.assemble(
+                ("  ⚠ ", "warning"),
+                (message, "dim white"),
+            )
+        )
 
     def show_help(self) -> None:
-        help_text = """
+        help_text = """\
 ## Commands
 
-- `/help` - Show this help
-- `/exit` or `/quit` - Exit the agent
-- `/clear` - Clear conversation history
-- `/config` - Show current configuration
-- `/model <name>` - Change the model
-- `/approval <mode>` - Change approval mode
-- `/stats` - Show session statistics
-- `/tools` - List available tools
-- `/mcp` - Show MCP server status
-- `/save` - Save current session
-- `/checkpoint [name]` - Create a checkpoint
-- `/checkpoints` - List available checkpoints
-- `/restore <checkpoint_id>` - Restore a checkpoint
-- `/sessions` - List saved sessions
-- `/resume <session_id>` - Resume a saved session
+| Command | Description |
+|---|---|
+| `/help` | Show this help |
+| `/exit` or `/quit` | Exit the agent |
+| `/clear` | Clear conversation history |
+| `/config` | Show current configuration |
+| `/model <name>` | Change the model |
+| `/approval <mode>` | Change approval mode |
+| `/stats` | Show session statistics |
+| `/tools` | List available tools |
+| `/mcp` | Show MCP server status |
+| `/save` | Save current session |
+| `/checkpoint [name]` | Create a checkpoint |
+| `/checkpoints` | List available checkpoints |
+| `/restore <id>` | Restore a checkpoint |
+| `/sessions` | List saved sessions |
+| `/resume <id>` | Resume a saved session |
 
 ## Tips
 
 - Just type your message to chat with the agent
 - The agent can read, write, and execute code
+- Use `@filename` to mention and attach files
 - Some operations require approval (can be configured)
 """
-    def _ordered_args(self,tool_name:str,args:dict[str, Any]) -> list[tuple[str,Any]]:
-        """
-        this funtion helps to show the most important arguments of a tool call first in the TUI. It uses a predefined order for known tools, and then appends any remaining arguments in arbitrary order.
-        """
+        self.console.print(Markdown(help_text))
+
+    # ─── Arg Rendering Helpers ────────────────────────────────────────────
+
+    def _ordered_args(self, tool_name: str, args: dict[str, Any]) -> list[tuple[str, Any]]:
+        """Show the most important arguments of a tool call first in the TUI."""
         _PREFERRED_ORDER = {
-                'read_file': ['path','offset','limit'],
-                "write_file": ["path", "create_directories", "content"],
-                "edit_file": ["path", "replace_all", "old_string", "new_string"],
-                "shell": ["command", "timeout", "cwd"],
-                "list_dir": ["path", "include_hidden"],
-                "grep": ["path", "case_insensitive", "pattern"],
-                "glob": ["path", "pattern"],
-                "todos": ["id", "action", "content"],
-                "memory": ["action", "scope", "key", "value", "ttl_seconds"],
+            'read_file': ['path', 'offset', 'limit'],
+            "write_file": ["path", "create_directories", "content"],
+            "edit_file": ["path", "replace_all", "old_string", "new_string"],
+            "shell": ["command", "timeout", "cwd"],
+            "list_dir": ["path", "include_hidden"],
+            "grep": ["path", "case_insensitive", "pattern"],
+            "glob": ["path", "pattern"],
+            "todos": ["id", "action", "content"],
+            "memory": ["action", "scope", "key", "value", "ttl_seconds"],
         }
 
-        preffered = _PREFERRED_ORDER.get(tool_name, [])
-        ordered:list[tuple[str,Any]] = []
+        preferred = _PREFERRED_ORDER.get(tool_name, [])
+        ordered: list[tuple[str, Any]] = []
         seen = set()
 
-        for key in preffered:
+        for key in preferred:
             if key in args:
-                ordered.append((key,args[key]))
+                ordered.append((key, args[key]))
                 seen.add(key)
 
-        remaining_keys =set(args.keys() - seen)
-        ordered.extend([(key,args[key]) for key in remaining_keys])
+        remaining_keys = set(args.keys()) - seen
+        ordered.extend([(key, args[key]) for key in remaining_keys])
         return ordered
 
     def _render_args_table(self, tool_name: str, args: dict[str, Any]) -> Table:
@@ -885,13 +976,12 @@ class TUI:
         table.add_column(overflow="fold")
 
         for key, value in self._ordered_args(tool_name, args):
-            if key in { 'content', 'old_string', 'new_string', 'text', 'body'} and isinstance(value, str):
+            if key in {'content', 'old_string', 'new_string', 'text', 'body'} and isinstance(value, str):
                 line_count = len(value.splitlines()) or 0
                 byte_count = len(value.encode('utf-8'))
-
                 value = f"<{line_count} lines, {byte_count} bytes of text>"
 
-            if isinstance(value , bool):
+            if isinstance(value, bool):
                 value = str(value)
 
             table.add_row(key, self._format_arg_value(key, value))
@@ -900,13 +990,13 @@ class TUI:
     def _format_arg_value(self, key: str, value: Any) -> Text:
         """Render a single argument value with type-aware styling."""
         if isinstance(value, bool):
-            return Text(str(value), style="cyan" if value else "muted")
+            return Text(str(value), style="#22d3ee" if value else "muted")
         if isinstance(value, (int, float)):
             return Text(str(value), style="bold bright_white")
         if not isinstance(value, str):
             value = str(value)
 
-        # Decide max length — generous for most keys, short for large content keys
+        # Decide max length
         max_len = 60 if key in _LARGE_VALUE_KEYS else _MAX_ARG_LEN
 
         # Collapse multiline to single line preview
@@ -926,22 +1016,18 @@ class TUI:
             t.append(suffix, style="muted")
         return t
 
-    def _extract_read_file_content(self,text:str) -> tuple[int,str]|None:
-        """
-        This function is a helper to extract file content from a tool call output, specifically for read_file tool. It looks for a specific pattern in the text to identify the content and its offset.
-        """
+    def _extract_read_file_content(self, text: str) -> tuple[int, str] | None:
+        """Extract file content from read_file tool output."""
         body = text
         header = re.match(r"^Showing lines (\d+) to (\d+) of (\d+)\n\n", text)
 
         if header:
-            # trim down the header
             body = text[header.end():]
 
-        code_lines:list[str] = []
-        start_line : int = 0
+        code_lines: list[str] = []
+        start_line: int = 0
 
         for line in body.splitlines():
-            # we have reframe the code lines from num|content to just content
             match = re.match(r"^\s*(\d+)\|(.*)$", line)
             if not match:
                 return None
@@ -951,7 +1037,6 @@ class TUI:
                 start_line = line_num
             content = match.group(2)
             code_lines.append(content)
-
 
         if not code_lines or start_line == 0:
             return None
