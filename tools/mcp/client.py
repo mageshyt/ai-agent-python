@@ -107,7 +107,19 @@ class MCPClient:
         try:
             await client.__aexit__(None, None, None)
         except Exception:
-            # Best effort cleanup; shutdown should continue even if close fails.
+            pass
+
+        transport = getattr(client, '_transport', None)
+        if transport is not None:
+            inner = getattr(transport, '_process', None) or getattr(transport, '_transport', None)
+            if inner is not None:
+                try:
+                    inner.close()
+                except Exception:
+                    pass
+        try:
+            await asyncio.sleep(0)
+        except Exception:
             pass
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]):
