@@ -1,3 +1,4 @@
+import asyncio
 import re
 import subprocess
 from pathlib import Path
@@ -277,7 +278,21 @@ class CLI:
                 elif cmd == "/clear":
                     console.clear()
                 else:
-                    await self._process_message(cmd)
+                    task = asyncio.create_task(self._process_message(cmd))
+                    try:
+                        await task
+                    except KeyboardInterrupt:
+                        # Ctrl+C during agent work — cancel the task properly
+                        task.cancel()
+                        try:
+                            await task
+                        except (asyncio.CancelledError, KeyboardInterrupt):
+                            pass
+                        self.tui.end_assistant()
+                        console.print("\n[dim]⏹ Interrupted[/dim]")
+                    except asyncio.CancelledError:
+                        self.tui.end_assistant()
+                        console.print("\n[dim]⏹ Cancelled[/dim]")
 
     def _get_tool_kind(self, tool_name:str) -> str:
         if not self.agent:

@@ -35,15 +35,13 @@ def main(stream: bool, prompt: str, cwd: Path):
     cli = CLI(config)
     try:
         if prompt:
-            run(cli.run_single(prompt))
+            result = run(cli.run_single(prompt))
+            if result is None:
+                sys.exit(1)
         else:
             run(cli.run_interactive())
-    except (KeyboardInterrupt, EOFError):
-        pass  
-    except RuntimeError as e:
-        if "Event loop is closed" not in str(e):
-            raise
-
+    except Exception as e:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
