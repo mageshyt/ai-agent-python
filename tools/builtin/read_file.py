@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from config.config import Config
 from lib import MAX_FILE_SIZE,check_file_size, is_binary_file, resolve_path ,  count_tokens, truncate_text_by_tokens
-from lib.constants import BLOCKED_FILES
+from lib.contants.config import BLOCKED_FILES
 from tools import Tool, ToolInvocation, ToolKind, ToolResult
 
 

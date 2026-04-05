@@ -3,7 +3,7 @@ import httpx
 
 from config.config import Config
 from lib import  MAX_FILE,resolve_path, IGNORED_DIRECTORIES
-from lib.constants import MAX_CONTENT_SIZE
+from lib.contants.config import MAX_CONTENT_SIZE
 from lib.paths import MAX_FILE_SIZE
 from tools.base import Tool, ToolInvocation, ToolKind, ToolResult
 from pydantic import BaseModel, Field

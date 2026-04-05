@@ -9,7 +9,7 @@ import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field
 from config.config import Config
-from lib.constants import BLOCKED_COMMANDS
+from lib.contants.config import BLOCKED_COMMANDS
 from tools.base import Tool, ToolConfirmation, ToolInvocation, ToolKind, ToolResult
 
 class ShellParams(BaseModel):

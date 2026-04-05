@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, List
 from config.config import Config
 from config.loader import get_config_dir
-from lib.constants import APP_NAME
+from lib.contants.config import APP_NAME
 from tools import ToolRegistry, Tool
 
 logger = logging.getLogger(__name__)

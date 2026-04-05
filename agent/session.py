@@ -15,7 +15,7 @@ class Session:
         self.client = LLMProvider(config)
         self.agentId : str = "agent_black"
         self.tool_registry = create_tool_registry(config)
-        self.context_manager = ContextManager(config,tools=self.tool_registry.get_tools())
+        self.context_manager = None
         self.config = config
         self.discovery_manager = ToolDiscoveryManger(config,self.tool_registry)
         self.mcp_manager = MCPManager(config)
@@ -29,6 +29,7 @@ class Session:
         await self.mcp_manager.initialize()
         self.mcp_manager.register_tools(self.tool_registry)
         self.discovery_manager.discover_all() # discover tools again after registering mcp tools, so that we can update the tool registry with the new tools
+        self.context_manager = ContextManager(self.config,tools=self.tool_registry.get_tools())
 
 
     def increment_turn(self)->int:
