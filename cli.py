@@ -82,27 +82,27 @@ class UnifiedCompleter(Completer):
             yield from self.cmd_completer.get_completions(document, complete_event)
 
 PROMPT_STYLE = Style.from_dict({
-    # Input prompt
-    "prompt":                              "#00ffff bold",
-    "prompt.chrome":                       "#7aa2f7 bold",
-    "prompt.brand":                        "#7dcfff bold",
-    "prompt.arrow":                        "#bb9af7 bold",
-    "prompt.input":                        "#c0caf5",
-    "rprompt":                             "#7aa2f7",
-    # Autocomplete dropdown
-    "completion-menu":                       "bg:#1e1e2e #a9b1d6",
-    "completion-menu.completion":            "bg:#1e1e2e #a9b1d6",
-    "completion-menu.completion.current":    "bg:#414868 #ffffff bold",
-    "completion-menu.meta.completion":       "bg:#1e1e2e #565f89",
-    "completion-menu.meta.completion.current": "bg:#414868 #c0caf5",
-    "scrollbar.background":                  "bg:#1a1b26",
-    "scrollbar.button":                      "bg:#565f89",
-    # Bottom toolbar
+    # Input prompt — cyan/teal palette
+    "prompt":                              "#22d3ee bold",
+    "prompt.chrome":                       "#0891b2 bold",
+    "prompt.brand":                        "#67e8f9 bold",
+    "prompt.arrow":                        "#22d3ee bold",
+    "prompt.input":                        "#cffafe",
+    "rprompt":                             "#67e8f9",
+    # Autocomplete dropdown — dark cyan-tinted
+    "completion-menu":                       "bg:#0a1a1f #a5f3fc",
+    "completion-menu.completion":            "bg:#0a1a1f #a5f3fc",
+    "completion-menu.completion.current":    "bg:#155e75 #ffffff bold",
+    "completion-menu.meta.completion":       "bg:#0a1a1f #155e75",
+    "completion-menu.meta.completion.current": "bg:#155e75 #cffafe",
+    "scrollbar.background":                  "bg:#0a1219",
+    "scrollbar.button":                      "bg:#155e75",
+    # Bottom toolbar — cyan tones
     "bottom-toolbar":                        "#000000 nounderline",
-    "bottom-toolbar.text":                   "#9aa5ce",
-    "bottom-toolbar.key":                    "#8bd5ff bold",
-    "bottom-toolbar.path":                   "#c6d0f5",
-    "bottom-toolbar.branch":                 "#8aadf4",
+    "bottom-toolbar.text":                   "#67e8f9",
+    "bottom-toolbar.key":                    "#22d3ee bold",
+    "bottom-toolbar.path":                   "#cffafe",
+    "bottom-toolbar.branch":                 "#67e8f9",
 })
 
 command_completer = SystemCommandCompleter(COMMANDS)
@@ -233,8 +233,11 @@ class CLI:
             complete_while_typing=True,
             complete_style=CompleteStyle.COLUMN,
             style=PROMPT_STYLE,
-            bottom_toolbar=HTML(self._build_bottom_toolbar(cwd_name, branch_text)),
+            # bottom_toolbar=HTML(self._build_bottom_toolbar(cwd_name, branch_text)),
         )
+
+        import time as _time
+        _last_interrupt = 0.0
 
         async with Agent(self.config) as agent:
             self.agent = agent 
@@ -242,18 +245,26 @@ class CLI:
                 try:
                     user_input = await session.prompt_async(
                         HTML(
-                            '<style fg="#c0caf5">></style> '
+                            '<style fg="#22d3ee">❯</style> '
                         ),
                         placeholder=HTML(
                             '<style fg="#6c7086">Enter @ to mention files or / for commands</style>'
                         ),
                         rprompt=HTML(
-                            f'<style fg="#7aa2f7">{self.config.get_model_name}</style>'
+                            f'<style fg="#67e8f9">{self.config.get_model_name}</style>'
                         ),
                     )
+                    _last_interrupt = 0.0  # reset on successful input
                 except (EOFError, KeyboardInterrupt):
-                    console.print("[bold red]Exiting... Goodbye![/]")
-                    break
+                    now = _time.monotonic()
+                    if now - _last_interrupt < 2.0:
+                        # Second Ctrl+C within 2s — exit
+                        console.print("\n[bold #22d3ee]Goodbye![/]")
+                        break
+                    else:
+                        _last_interrupt = now
+                        console.print("\n[dim]Press Ctrl+C again to exit[/dim]")
+                        continue
 
                 cmd = user_input.strip()
                 if not cmd:
@@ -303,14 +314,14 @@ class CLI:
         padding = " " * padding_len
         
         return (
-            '<style fg="#8bd5ff">Ctrl+C</style><style fg="#9aa5ce"> Exit</style>'
-            '<style fg="#8bd5ff">  ·  </style>'
-            '<style fg="#8bd5ff">/</style><style fg="#9aa5ce"> Commands</style>'
-            '<style fg="#8bd5ff">  ·  </style>'
-            '<style fg="#8bd5ff">@</style><style fg="#9aa5ce"> Mention files</style>'
-            f'<style fg="#8bd5ff">{padding}</style>'
-            f'<style fg="#c6d0f5">~/{cwd_name}</style>'
-            f'<style fg="#8aadf4"> {branch_text}</style>'
+            '<style fg="#22d3ee">Ctrl+C</style><style fg="#67e8f9"> Exit</style>'
+            '<style fg="#155e75">  ·  </style>'
+            '<style fg="#22d3ee">/</style><style fg="#67e8f9"> Commands</style>'
+            '<style fg="#155e75">  ·  </style>'
+            '<style fg="#22d3ee">@</style><style fg="#67e8f9"> Mention files</style>'
+            f'<style fg="#155e75">{padding}</style>'
+            f'<style fg="#cffafe">~/{cwd_name}</style>'
+            f'<style fg="#67e8f9"> {branch_text}</style>'
         )
     
     def _get_filesystem_completer(self, cwd: Path) -> Completer:
