@@ -50,11 +50,8 @@ def load_config(cwd: Path | None = None) -> Config:
 
 
     # register mcp tools
-    # if "mcp_tools" not in config_dict:
-    #     config_dict["mcp_tools"] = []
-    #
-    #     pass
-    print(config_dict)
+    if "mcp_tools" not in config_dict:
+        config_dict["mcp_tools"] = []
 
     try:
         config = Config(**config_dict)
