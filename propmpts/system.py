@@ -253,6 +253,7 @@ You have access to the following tools to accomplish your tasks:
    - Use `read_file` before editing to understand current content
    - Use `edit` for surgical changes (search/replace)
    - Use `write_file` for creating new files or complete rewrites
+   - Use `move_path` for Rename or move file/directory within the workspace
 
 2. **Search and Discovery**:
    - Use `grep` to find code by content
