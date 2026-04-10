@@ -3,7 +3,7 @@ import importlib
 import random
 import re
 import time
-import threading
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -35,9 +35,12 @@ from lib.contants.figures import (
 )
 from tools.base import FileDiff, ToolKind
 
-# -- Import SPINNER_VERBS from the hyphenated module name ----------------
-_spinner_mod = importlib.import_module("lib.contants.spinner-verbs")
-SPINNER_VERBS: list[str] = getattr(_spinner_mod, "SPINNER_VERBS", ["Thinking"])
+# -- Import SPINNER_VERBS (handle hyphenated module name gracefully) ------
+try:
+    _spinner_mod = importlib.import_module("lib.contants.spinner-verbs")
+    SPINNER_VERBS: list[str] = getattr(_spinner_mod, "SPINNER_VERBS", ["Thinking"])
+except Exception:
+    SPINNER_VERBS: list[str] = ["Thinking"]
 
 # Syntax highlight theme used for all code blocks
 CODE_THEME = "monokai"
@@ -146,9 +149,10 @@ class TUI:
         self._buffer = ""
         self._use_markdown = True
         self._live_display = None
-        self._verb_timer: threading.Timer | None = None
+        self._verb_task: asyncio.Task | None = None
         self._spinner_style: str = "thinking"      # current spinner style
         self._spinner_prefix: str = ""              # e.g. "▶ AgentName ∙ "
+        self._is_streaming_text: bool = False       # True while text deltas arrive
         self._tool_args_by_call_id: dict[str, dict[str, Any]] = {}
         self.config = config
         self.cwd = config.cwd
@@ -157,31 +161,40 @@ class TUI:
     # ─── Helpers ──────────────────────────────────────────────────────────
 
     def _start_verb_rotation(self, style: str = "thinking", prefix: str = "", interval: float = 2.0) -> None:
-        """Start a repeating timer that cycles the spinner verb every `interval` seconds."""
-        self._stop_verb_rotation()  # cancel any existing timer
+        """Start a repeating async task that cycles the spinner verb every `interval` seconds."""
+        self._stop_verb_rotation()  # cancel any existing task
         self._spinner_style = style
         self._spinner_prefix = prefix
 
-        def _tick():
-            if self._live_display is not None and self._buffer == "":
-                verb = _random_verb()
-                self._live_display.update(
-                    Spinner("dots", text=f"[{self._spinner_style}]{self._spinner_prefix}{verb}...[/]", style=self._spinner_style)
-                )
-            # Re-schedule
-            self._verb_timer = threading.Timer(interval, _tick)
-            self._verb_timer.daemon = True
-            self._verb_timer.start()
+        async def _run():
+            try:
+                while True:
+                    if self._live_display is not None and self._buffer == "" and not self._is_streaming_text:
+                        verb = _random_verb()
+                        try:
+                            self._live_display.update(
+                                Spinner("dots", text=f"[{self._spinner_style}]{self._spinner_prefix}{verb}...[/]", style=self._spinner_style)
+                            )
+                        except Exception:
+                            # Live may have been stopped between ticks
+                            pass
+                    await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                return
 
-        self._verb_timer = threading.Timer(interval, _tick)
-        self._verb_timer.daemon = True
-        self._verb_timer.start()
+        try:
+            loop = asyncio.get_running_loop()
+            self._verb_task = loop.create_task(_run())
+        except RuntimeError:
+            # No running loop; run a background loop briefly (fallback)
+            self._verb_task = asyncio.create_task(_run())
 
     def _stop_verb_rotation(self) -> None:
-        """Cancel the verb rotation timer."""
-        if self._verb_timer is not None:
-            self._verb_timer.cancel()
-            self._verb_timer = None
+        """Cancel the verb rotation task."""
+        task = getattr(self, "_verb_task", None)
+        if task is not None:
+            task.cancel()
+            self._verb_task = None
 
     def _left_bar_renderable(self, renderable, style: str = "leftbar"):
         """Wrap a Rich renderable with a left-border-only panel.
@@ -341,7 +354,7 @@ class TUI:
         self._live_display = Live(
             Spinner("dots", text=f"[thinking]{verb}...[/]", style="thinking"),
             console=self.console,
-            refresh_per_second=15,
+            refresh_per_second=12,
             vertical_overflow="visible",
             transient=True,
         )
@@ -350,6 +363,7 @@ class TUI:
 
     def end_assistant(self) -> None:
         self._stop_verb_rotation()
+        self._is_streaming_text = False
         if self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
@@ -363,18 +377,25 @@ class TUI:
 
         if self._live_display is not None:
             self._stop_verb_rotation()  # stop rotating once text starts streaming
+            self._is_streaming_text = True
             grp_msg = Group(
                 Text(ASSISTANT_ICON, style="assistant",end=" "),
                 Markdown(self._buffer)
             )
-            self._live_display.update(grp_msg)
+            try:
+                self._live_display.update(grp_msg)
+            except Exception:
+                pass
 
     def assistant_thinking(self, message: str = "Thinking") -> None:
         verb = _random_verb()
         if self._live_display is not None:
-            self._live_display.update(
-                Spinner("dots", text=f"[thinking]{verb}...[/]", style="thinking")
-            )
+            try:
+                self._live_display.update(
+                    Spinner("dots", text=f"[thinking]{verb}...[/]", style="thinking")
+                )
+            except Exception:
+                pass
             self._start_verb_rotation(style="thinking")
 
     def stop_thinking(self) -> None:
@@ -386,14 +407,23 @@ class TUI:
     def agent_started(self, agent_name: str, message: str) -> None:
         if self._live_display is not None:
             verb = _random_verb()
-            self._live_display.update(
-                Spinner("dots", text=f"[working]{AGENT_PLAY} {agent_name} {SEPARATOR} {verb}...[/]", style="working")
-            )
+            try:
+                self._live_display.update(
+                    Spinner("dots", text=f"[working]{AGENT_PLAY} {agent_name} {SEPARATOR} {verb}...[/]", style="working")
+                )
+            except Exception:
+                pass
             self._start_verb_rotation(style="working", prefix=f"{AGENT_PLAY} {agent_name} {SEPARATOR} ")
 
     def agent_finished(self, agent_name: str, response: str | None = None) -> None:
         self._stop_verb_rotation()
-        if self._live_display is not None:
+        if self._assistant_stream_open and self._live_display is not None:
+            # Sub-agent done but assistant turn continues — switch back to thinking spinner
+            self._live_display.update(
+                Spinner("dots", text=f"[thinking]{_random_verb()}...[/]", style="thinking")
+            )
+            self._start_verb_rotation(style="thinking")
+        elif self._live_display is not None:
             self._live_display.stop()
             self._live_display = None
         self.console.print()
@@ -448,13 +478,19 @@ class TUI:
         self._tool_args_by_call_id[call_id] = arguments
 
         self._stop_verb_rotation()
+        self._is_streaming_text = False
+
+        # Clear Live content to avoid duplication when flushing buffer
         if self._live_display is not None:
-            self._live_display.stop()
-            self._live_display = None
+            self._live_display.update(Text(""))
 
         if self._buffer.strip():
             if self._use_markdown:
-                self.console.print(Markdown(self._buffer.strip()))
+                grp_msg = Group(
+                    Text(ASSISTANT_ICON, style="assistant", end=" "),
+                    Markdown(self._buffer.strip())
+                )
+                self.console.print(grp_msg)
             else:
                 self.console.print(Text(self._buffer.strip(), style="dim white"))
 
@@ -491,16 +527,20 @@ class TUI:
                 self._left_bar_renderable(args_table, style=tool_style)
             )
 
-        # Spinner while the tool executes
+        # Update spinner while the tool executes (reuse existing Live)
         verb = _random_verb()
-        self._live_display = Live(
-            Spinner("dots", text=f"[{tool_style}]  {LEFT_BAR} {verb}...[/]"),
-            console=self.console,
-            refresh_per_second=10,
-            vertical_overflow="visible",
-            transient=True,
-        )
-        self._live_display.start()
+        spinner = Spinner("dots", text=f"[{tool_style}]  {LEFT_BAR} {verb}...[/]")
+        if self._live_display is not None:
+            self._live_display.update(spinner)
+        else:
+            self._live_display = Live(
+                spinner,
+                console=self.console,
+                refresh_per_second=12,
+                vertical_overflow="visible",
+                transient=True,
+            )
+            self._live_display.start()
         self._start_verb_rotation(style=tool_style, prefix=f"  {LEFT_BAR} ")
 
     def tool_call_finished(
@@ -528,48 +568,65 @@ class TUI:
         blocks: list = []
 
         if tool_name == "read_file" and success:
-            extracted = self._extract_read_file_content(output)
-            start_line, code_content = extracted if extracted else (1, output)
-            show_start = metadata.get("start_line") if metadata else None
-            show_end   = metadata.get("end_line")   if metadata else None
-            total_lines = metadata.get("total_lines") if metadata else None
-            code_language = self._guess_language(primary_path) if primary_path else "text"
-            line_count = len(code_content.splitlines())
+            # If tool opted not to include content, show a compact summary only
+            if isinstance(metadata, dict) and metadata.get("show_file") is False:
+                path_text = primary_path or (metadata.get("path") if isinstance(metadata.get("path"), str) else "file")
+                show_start = metadata.get("start_line") if metadata else None
+                show_end   = metadata.get("end_line")   if metadata else None
+                total_lines = metadata.get("total_lines") if metadata else None
 
-            # Build title: "filename.py" and subtitle: "lines 1-50 of 200"
-            panel_title = primary_path or "file"
-            subtitle_parts = []
-            if show_start is not None and show_end is not None:
-                subtitle_parts.append(f"lines {show_start}–{show_end}")
-                if total_lines is not None:
-                    subtitle_parts.append(f"of {total_lines}")
-            elif total_lines is not None:
-                subtitle_parts.append(f"{total_lines} lines")
-            subtitle_parts.append(f"{line_count} lines read")
-            panel_subtitle = "  ".join(subtitle_parts)
-
-            # Show max 20 lines preview, collapse the rest
-            MAX_PREVIEW_LINES = 20
-            preview_lines = code_content.splitlines()
-            if len(preview_lines) > MAX_PREVIEW_LINES:
-                preview_content = "\n".join(preview_lines[:MAX_PREVIEW_LINES])
-                remaining = len(preview_lines) - MAX_PREVIEW_LINES
-                blocks.append(
-                    self._code_panel(
-                        Syntax(preview_content, lexer=code_language, theme=CODE_THEME, line_numbers=True, start_line=start_line, word_wrap=False),
-                        title=panel_title,
-                        subtitle=panel_subtitle,
-                    )
-                )
-                blocks.append(Text(f"  ... {remaining} more lines (truncated)", style="muted italic"))
+                summary_parts = [path_text]
+                if show_start is not None and show_end is not None:
+                    part = f"lines {show_start}–{show_end}"
+                    if total_lines is not None:
+                        part += f" of {total_lines}"
+                    summary_parts.append(part)
+                elif total_lines is not None:
+                    summary_parts.append(f"{total_lines} lines")
+                blocks.append(Text("  ".join(summary_parts), style="muted"))
             else:
-                blocks.append(
-                    self._code_panel(
-                        Syntax(code_content, lexer=code_language, theme=CODE_THEME, line_numbers=True, start_line=start_line, word_wrap=False),
-                        title=panel_title,
-                        subtitle=panel_subtitle,
+                extracted = self._extract_read_file_content(output)
+                start_line, code_content = extracted if extracted else (1, output)
+                show_start = metadata.get("start_line") if metadata else None
+                show_end   = metadata.get("end_line")   if metadata else None
+                total_lines = metadata.get("total_lines") if metadata else None
+                code_language = self._guess_language(primary_path) if primary_path else "text"
+                line_count = len(code_content.splitlines())
+
+                # Build title: "filename.py" and subtitle: "lines 1-50 of 200"
+                panel_title = primary_path or "file"
+                subtitle_parts = []
+                if show_start is not None and show_end is not None:
+                    subtitle_parts.append(f"lines {show_start}–{show_end}")
+                    if total_lines is not None:
+                        subtitle_parts.append(f"of {total_lines}")
+                elif total_lines is not None:
+                    subtitle_parts.append(f"{total_lines} lines")
+                subtitle_parts.append(f"{line_count} lines read")
+                panel_subtitle = "  ".join(subtitle_parts)
+
+                # Show max 20 lines preview, collapse the rest
+                MAX_PREVIEW_LINES = 20
+                preview_lines = code_content.splitlines()
+                if len(preview_lines) > MAX_PREVIEW_LINES:
+                    preview_content = "\n".join(preview_lines[:MAX_PREVIEW_LINES])
+                    remaining = len(preview_lines) - MAX_PREVIEW_LINES
+                    blocks.append(
+                        self._code_panel(
+                            Syntax(preview_content, lexer=code_language, theme=CODE_THEME, line_numbers=True, start_line=start_line, word_wrap=False),
+                            title=panel_title,
+                            subtitle=panel_subtitle,
+                        )
                     )
-                )
+                    blocks.append(Text(f"  ... {remaining} more lines (truncated)", style="muted italic"))
+                else:
+                    blocks.append(
+                        self._code_panel(
+                            Syntax(code_content, lexer=code_language, theme=CODE_THEME, line_numbers=True, start_line=start_line, word_wrap=False),
+                            title=panel_title,
+                            subtitle=panel_subtitle,
+                        )
+                    )
         elif tool_name in {"write_file", "edit_file"} and success and diff is not None:
             diff_text = diff.to_diff()
             # Build subtitle with change stats
@@ -836,9 +893,10 @@ class TUI:
             blocks.append(Text(" output truncated", style="muted italic"))
 
         self._stop_verb_rotation()
+
+        # Clear spinner so static content prints cleanly
         if self._live_display is not None:
-            self._live_display.stop()
-            self._live_display = None
+            self._live_display.update(Text(""))
 
         # === Print output with left bar (Claude Code style — no status line) ===
         if blocks:
@@ -846,17 +904,25 @@ class TUI:
                 self._left_bar_renderable(Group(*blocks), style=tool_style)
             )
 
-        # Resume assistant streaming area (preserve buffer for text between tool calls)
-        if self._assistant_stream_open and self._live_display is None:
-            self._live_display = Live(
-                Spinner("dots", text=f"[thinking]{_random_verb()}...[/]", style="thinking"),
-                console=self.console,
-                refresh_per_second=15,
-                vertical_overflow="visible",
-                transient=True,
-            )
-            self._live_display.start()
+        # Resume assistant streaming area (reuse existing Live)
+        if self._assistant_stream_open:
+            verb = _random_verb()
+            spinner = Spinner("dots", text=f"[thinking]{verb}...[/]", style="thinking")
+            if self._live_display is not None:
+                self._live_display.update(spinner)
+            else:
+                self._live_display = Live(
+                    spinner,
+                    console=self.console,
+                    refresh_per_second=12,
+                    vertical_overflow="visible",
+                    transient=True,
+                )
+                self._live_display.start()
             self._start_verb_rotation(style="thinking")
+        elif self._live_display is not None:
+            self._live_display.stop()
+            self._live_display = None
 
     def subagent_started(self, subagent_name: str) -> None:
         """Display when a subagent is invoked"""
@@ -933,7 +999,7 @@ class TUI:
     def _ordered_args(self, tool_name: str, args: dict[str, Any]) -> list[tuple[str, Any]]:
         """Show the most important arguments of a tool call first in the TUI."""
         _PREFERRED_ORDER = {
-            'read_file': ['path', 'offset', 'limit'],
+            'read_file': ['path', 'offset', 'limit', 'show_file'],
             "write_file": ["path", "create_directories", "content"],
             "edit_file": ["path", "replace_all", "old_string", "new_string"],
             "shell": ["command", "timeout", "cwd"],
