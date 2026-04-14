@@ -6,9 +6,7 @@ APP_NAME = "cyberowl-agent"
 AGENT_DISPLAY_NAME = "CYBEROWL"
 AGENT_ASCII_FONT = "ansi_shadow"
 AGENT_TAGLINE = "Command-line interface"
-AGENT_CHARACTER = (
-    "Precise, practical coding partner. Prioritize correctness, safety, and clear execution."
-)
+AGENT_CHARACTER = "Precise, practical coding partner. Prioritize correctness, safety, and clear execution."
 
 IGNORED_DIRECTORIES = {
     "node_modules",
@@ -46,14 +44,10 @@ BLOCKED_COMMANDS = {
     "init 6",
 }
 
-BLOCKED_FILES = [
-    ".env",
-    ".env.*",
-    "*.pem",
-    "*.key",
-    "credentials.json",
-    "secrets.*"
-]
+BLOCKED_FILES = [".env", ".env.*", "*.pem", "*.key", "credentials.json", "secrets.*"]
 
 MAX_FILE = 1000  # maximum number of files to read in grep tool to prevent excessive memory usage
-MAX_CONTENT_SIZE = 1024 * 100 # 100kb - maximum content size to read from files or web responses to prevent excessive memory usage
+MAX_CONTENT_SIZE = (
+    1024 * 100
+)  # 100kb - maximum content size to read from files or web responses to prevent excessive memory usage
+MIN_MESSAGE_LIMIT = 5  # min nuber of message needed for summarization
