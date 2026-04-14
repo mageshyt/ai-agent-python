@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ai-agent-python"
 version = "0.1.0"
@@ -23,3 +27,14 @@ dependencies = [
 dev = [
     "ruff>=0.15.2",
 ]
+
+[project.scripts]
+cyberowl = "main:main"
+
+[tool.setuptools]
+py-modules = ["main", "cli"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agent*", "config*", "context*", "lib*", "llm*", "propmpts*", "session*", "tools*", "ui*"]
+namespaces = true
