@@ -924,6 +924,80 @@ class TUI:
             self._live_display.stop()
             self._live_display = None
 
+    def compaction_started(self ) -> None:
+        """Display when context compaction is started."""
+        self._stop_verb_rotation()
+        self._is_streaming_text = False
+
+        if self._live_display is not None:
+            try:
+                self._live_display.update(
+                    Spinner("dots", text=f"[working]Compacting context...[/]", style="working")
+                )
+            except Exception:
+                pass
+
+    def compaction_finished(
+        self,
+        summary: str | None = None,
+        usage: dict[str, Any] | None = None,
+    ) -> None:
+        """Display when context compaction is finished."""
+        self._stop_verb_rotation()
+
+        usage_text = ""
+        if isinstance(usage, dict):
+            total_tokens = usage.get("total_tokens")
+            prompt_tokens = usage.get("prompt_tokens")
+            completion_tokens = usage.get("completion_tokens")
+            cached_tokens = usage.get("cached_tokens")
+            if isinstance(total_tokens, int):
+                usage_text = f" ({total_tokens} tokens)"
+            stats_parts: list[str] = []
+            if isinstance(prompt_tokens, int):
+                stats_parts.append(f"prompt {prompt_tokens}")
+            if isinstance(completion_tokens, int):
+                stats_parts.append(f"completion {completion_tokens}")
+            if isinstance(cached_tokens, int):
+                stats_parts.append(f"cached {cached_tokens}")
+            if isinstance(total_tokens, int):
+                stats_parts.append(f"total {total_tokens}")
+            if stats_parts:
+                usage_text = f" {SEPARATOR} " + f" {SEPARATOR} ".join(stats_parts)
+
+        summary_text = ""
+        if isinstance(summary, str) and summary.strip():
+            line_count = len(summary.strip().splitlines())
+            summary_text = f"{SEPARATOR} summary {line_count} lines"
+
+        self.console.print(
+            Text.assemble(
+                (f"  {TOOL_ICON_SUCCESS} ", "success"),
+                ("Context compaction complete", "dim white"),
+                (usage_text, "muted"),
+                (f" {summary_text}" if summary_text else "", "muted"),
+            )
+        )
+
+        if self._assistant_stream_open:
+            verb = _random_verb()
+            spinner = Spinner("dots", text=f"[thinking]{verb}...[/]", style="thinking")
+            if self._live_display is not None:
+                try:
+                    self._live_display.update(spinner)
+                except Exception:
+                    pass
+            else:
+                self._live_display = Live(
+                    spinner,
+                    console=self.console,
+                    refresh_per_second=12,
+                    vertical_overflow="visible",
+                    transient=True,
+                )
+                self._live_display.start()
+            self._start_verb_rotation(style="thinking")
+
     def subagent_started(self, subagent_name: str) -> None:
         """Display when a subagent is invoked"""
         style = f"subagent.{subagent_name}" if f"subagent.{subagent_name}" in AGENT_THEME.styles else "subagent"
