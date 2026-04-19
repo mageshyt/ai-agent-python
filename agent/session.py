@@ -3,6 +3,7 @@ import asyncio
 from datetime import datetime
 
 from config.config import Config
+from context.compaction import ChatCompactor
 from context.context_manager import ContextManager
 from llm.client import LLMProvider
 from tools.discovery import ToolDiscoveryManger
@@ -19,6 +20,7 @@ class Session:
         self.config = config
         self.discovery_manager = ToolDiscoveryManger(config,self.tool_registry)
         self.mcp_manager = MCPManager(config)
+        self.chat_compactor = ChatCompactor(self.client)
 
         self.sessionId = str(uuid.uuid4())
         self.createdAt = datetime.now()

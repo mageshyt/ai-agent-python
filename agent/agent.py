@@ -5,7 +5,7 @@ from typing import AsyncGenerator
 from agent.events import AgentEvent, AgentEventType
 from agent.session import Session
 from config.config import Config
-from lib.response import StreamEventType, ToolCall, ToolResultMessage
+from lib.response import StreamEventType, TokenUsage, ToolCall, ToolResultMessage
 from tools.base import ToolResult
 
 
@@ -36,6 +36,19 @@ class Agent:
         max_consecutive_tool_failures = max(1, self.config.max_consecutive_tool_failures)
         consecutive_tool_failures = 0
         tools = self.session.tool_registry.get_schemas()
+        usage : TokenUsage | None = None
+
+        print(f"used context",self.session.context_manager.get_total_usage())
+        if self.session.context_manager.is_need_to_reset():
+            print("Context reset triggered, compacting chat history...")
+            summary , summary_usage = await self.session.chat_compactor.compress(self.session.context_manager)
+            print(f"Context compaction completed. Summary: {summary}, Usage: {summary_usage}")
+            if summary and summary_usage:
+                self.session.context_manager.add_usage(summary_usage)
+                # reset context with the summary
+                self.session.context_manager.replace_chat_session(summary)
+
+
         
         for _ in range(max_turns):
             self.session.increment_turn()
@@ -58,19 +71,24 @@ class Agent:
                     # we have a complete tool call, now we can execute it
                     if event.tool_call:
                         tool_calls.append(event.tool_call)
-        
+                elif event.type == StreamEventType.MESSAGE_COMPLETE:
+                        usage = event.usage if event.usage else None
+                        
             #NOTE: we will add the assistant message to the context manager after the response is complete, so that we have the full response text available for token counting and other processing if needed. This also allows us to yield a text_complete event with the full response text.
             self.session.context_manager.add_assistant_message(
                 response_text,
                 [tc.to_dict() for tc in tool_calls] if tool_calls else None,
             )
-
+            
             # Only finalize visible assistant text for non-tool turns.
             if response_text and not tool_calls:
                 yield AgentEvent.text_complete(agent_name=self.session.agentId, content=response_text)
  
             if not tool_calls:
                 # if there are no tool calls, we can end the agentic loop and return the final response
+                if usage:
+                    self.session.context_manager.add_usage(usage)
+
                 break
             for tool_call in tool_calls:
                 yield AgentEvent.tool_started(
@@ -135,6 +153,7 @@ class Agent:
         args = tc.arguments if tc.arguments else {}
         result = await self.session.tool_registry.invoke_tool(name, args, self.config.cwd)
         return tc, name, result
+
     async def __aenter__(self) -> Agent:
         await self.session.initialize()
         return self
