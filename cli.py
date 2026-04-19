@@ -219,7 +219,17 @@ class CLI:
                 case AgentEventType.AGENT_ERROR:
                     error_msg = event.data.get('message', 'Unknown error')
                     self.tui.agent_error(error_msg)
-        
+
+                case AgentEventType.COMPACTION_STARTED:
+                    self.tui.compaction_started()
+
+                case AgentEventType.COMPACTION_FINISHED:
+                    agent_name = event.data.get('agent_name', 'unknown')
+                    summary = event.data.get('summary', '')
+                    usage = event.data.get('usage')
+                    self.tui.compaction_finished( summary, usage)    
+
+
         self.tui.end_assistant()
         return final_response
 
