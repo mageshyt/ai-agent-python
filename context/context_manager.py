@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from typing import Any
 from config.config import Config
 from config.loader import get_data_dir
+from lib.contants.config import CONTEXT_RESET_SIZE
+from lib.response import TokenUsage
 from lib.text import count_tokens
 from propmpts.system import get_system_prompt
 from tools.base import Tool
@@ -40,8 +42,10 @@ class ContextManager:
                 tools
                 )
         self._messages: list[MessageItem] = []
-        self._config = config
+        self._config:Config = config
         self._model = config.get_model_name
+        self._latest_usage = TokenUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0, cached_tokens=0)
+        self._total_usage = TokenUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0, cached_tokens=0)
 
 
     def add_user_message(self, content: str) -> None:
@@ -127,4 +131,97 @@ class ContextManager:
             ensure_ascii=False,
             indent=2,
         )
+    
+    def is_need_to_reset(self) -> bool:
+        context_limit = self._config.model.context_window
+        current_tokens = self._total_usage.total_tokens
 
+        return current_tokens >= (context_limit * CONTEXT_RESET_SIZE)  # reset when reaching 90% of context limit
+
+    def get_latest_usage(self) -> TokenUsage:
+        return self._latest_usage
+    
+    def replace_chat_session(self,summary:str)->None:
+        self._messages = []
+
+        new_system_prompt = f"""
+        # Context Restoration (Previous conversation Compacted):
+        The previos conversation has been compacted into the following summary to save tokens, but it may still contain important information.
+        Please use this summary to restore any important context or information that may be relevant for the current conversation.
+
+        Summary:
+        {summary}
+
+        **Important Notes**:
+        - The summary may not include all details from the original conversation, so please consider it as a reference rather than a complete replacement for the original context.
+        - If there are any ambiguities or missing information in the summary, please use your best judgment to fill in the gaps based on the information provided and the current conversation.
+        - Action listed under 'COMPLETED ACTIONS' are already executed, so you should not execute them again, but you can use the information from those actions if needed.
+        """
+
+        system_tokens = count_tokens(new_system_prompt)
+        self._messages.append(
+            MessageItem(
+                role="system", 
+                content=new_system_prompt,
+                token_count=system_tokens
+            )
+        )
+
+        self._total_usage = TokenUsage(
+            prompt_tokens=system_tokens,
+            completion_tokens=0,
+            total_tokens=system_tokens,
+            cached_tokens=0
+        )
+
+        # acknowledgement message for assistant
+        ack_content = "Context has been restored based on the provided summary. I will use this information to continue the conversation."
+        ack_tokens = count_tokens(ack_content)
+        self._messages.append(
+            MessageItem(
+                role="assistant", 
+                content=ack_content,
+                token_count=ack_tokens
+            )
+        )
+
+        self.add_usage(TokenUsage(
+            prompt_tokens=ack_tokens,
+            completion_tokens=0,
+            total_tokens=ack_tokens,
+            cached_tokens=0
+        ))
+        # continue content
+        continue_content = """
+        Now Continue with the REMAINING work only.
+        Do NOT repeat or redo any of the COMPLETED ACTIONS mentioned in the summary, as they have already been executed.
+        Focus only on the REMAINING ACTIONS and the current conversation to move forward effectively.
+        """
+
+        continue_tokens = count_tokens(continue_content)
+        self._messages.append(
+            MessageItem(
+                role="user", 
+                content=continue_content,
+                token_count=continue_tokens
+            )
+        )
+
+        self.add_usage(TokenUsage(
+            prompt_tokens=continue_tokens,
+            completion_tokens=0,
+            total_tokens=continue_tokens,
+            cached_tokens=0
+        ))
+
+
+
+    # def set_latest_usage(self, usage: TokenUsage) -> None:
+    #     self._latest_usage = usage
+
+    def add_usage(self, usage: TokenUsage) -> None:
+        self._latest_usage = usage
+        self._total_usage+= usage
+
+    def get_total_usage(self) -> TokenUsage:
+        return self._total_usage
