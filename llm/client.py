@@ -194,7 +194,7 @@ class LLMProvider:
 
 
         return StreamEvent(
-            type=StreamEventType.TEXT_DELTA,
+            type=StreamEventType.MESSAGE_COMPLETE,
             text_delta=text_delta,
             finished_reason=choice.finish_reason,
             usage=usage
