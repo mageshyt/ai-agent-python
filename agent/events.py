@@ -16,6 +16,10 @@ class AgentEventType(str,Enum):
     TEXT_DELTA = "text_delta"
     TEXT_COMPLETE = "text_complete"
 
+    COMPACTION_STARTED = "compaction_started"
+    COMPACTION_FINISHED = "compaction_finished"
+    COMPACTION_FAILED = "compaction_failed"
+
     # Tool events
     TOOL_STARTED = "tool_started"
     TOOL_FINISHED = "tool_finished"

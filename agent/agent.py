@@ -12,11 +12,11 @@ from tools.base import ToolResult
 class Agent:
     def __init__(self,config:Config) -> None:
         self.config = config
-        self.session = Session(config)
+        self.session:Session = Session(config)
     
-    async def run(self,mesage:str)->AsyncGenerator[AgentEvent, None]:
-        yield AgentEvent.agent_started(agent_name=self.session.agentId , message=mesage)
-        self.session.context_manager.add_user_message(mesage)
+    async def run(self, message: str) -> AsyncGenerator[AgentEvent, None]:
+        yield AgentEvent.agent_started(agent_name=self.session.agentId , message=message)
+        self.session.context_manager.add_user_message(message)
         final_response:str | None = None
         async for event in self._agentic_loop():
             yield event
@@ -31,31 +31,32 @@ class Agent:
         if (not self.session or not self.session.client):
             yield AgentEvent.agent_error(agent_name=self.session.agentId, message="LLM client is not initialized.")
             return
-
+        print("TOKENS USED IN THIS SESSION: ", self.session.context_manager.get_total_usage())
         max_turns = self.config.max_turns if self.config.max_turns else 10
         max_consecutive_tool_failures = max(1, self.config.max_consecutive_tool_failures)
         consecutive_tool_failures = 0
         tools = self.session.tool_registry.get_schemas()
         usage : TokenUsage | None = None
 
-        print(f"used context",self.session.context_manager.get_total_usage())
-        if self.session.context_manager.is_need_to_reset():
-            print("Context reset triggered, compacting chat history...")
-            summary , summary_usage = await self.session.chat_compactor.compress(self.session.context_manager)
-            print(f"Context compaction completed. Summary: {summary}, Usage: {summary_usage}")
-            if summary and summary_usage:
-                self.session.context_manager.add_usage(summary_usage)
-                # reset context with the summary
-                self.session.context_manager.replace_chat_session(summary)
-
-
-        
         for _ in range(max_turns):
             self.session.increment_turn()
             response_text = ""
 
+            if self.session.context_manager.is_need_to_reset():
+                yield AgentEvent(type=AgentEventType.COMPACTION_STARTED, data={"agent_name": self.session.agentId})
+                try:
+                    summary, summary_usage = await self.session.chat_compactor.compress(self.session.context_manager)
+                    if summary and summary_usage:
+                        self.session.context_manager.replace_chat_session(summary)
+                        yield AgentEvent(type=AgentEventType.COMPACTION_FINISHED, data={"agent_name": self.session.agentId, "summary": summary, "usage": summary_usage.__dict__})
+                    else:
+                        yield AgentEvent(type=AgentEventType.COMPACTION_FAILED, data={"agent_name": self.session.agentId, "reason": "Empty summary or usage"})
+                except Exception as e:
+                    yield AgentEvent(type=AgentEventType.COMPACTION_FAILED, data={"agent_name": self.session.agentId, "reason": str(e)})
+            
             message = self.session.context_manager.get_context()
             tool_calls:list[ToolCall] = []
+        
             async for event in self.session.client.send_message(message, tools = tools if tools else None, stream=True):
                 if event.type == StreamEventType.TEXT_DELTA:
                     content = event.text_delta.content if event.text_delta else ""

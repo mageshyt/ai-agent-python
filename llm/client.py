@@ -92,7 +92,7 @@ class LLMProvider:
                     prompt_tokens=chunk.usage.prompt_tokens,
                     completion_tokens=chunk.usage.completion_tokens,
                     total_tokens=chunk.usage.total_tokens,
-                    cached_tokens=chunk.usage.prompt_tokens_details.cached_tokens,
+                    cached_tokens=chunk.usage.prompt_tokens_details.cached_tokens if hasattr(chunk.usage, "prompt_tokens_details") and hasattr(chunk.usage.prompt_tokens_details, "cached_tokens") else 0
                 )
 
             if not hasattr(chunk, "choices") or len(chunk.choices) == 0:
@@ -187,7 +187,7 @@ class LLMProvider:
                 prompt_tokens=response.usage.prompt_tokens,
                 completion_tokens=response.usage.completion_tokens,
                 total_tokens=response.usage.total_tokens,
-                cached_tokens=response.usage.prompt_tokens_details.cached_tokens,
+                cached_tokens=response.usage.prompt_tokens_details.cached_tokens if hasattr(response.usage, "prompt_tokens_details") and hasattr(response.usage.prompt_tokens_details, "cached_tokens") else 0,
             )
 
 
