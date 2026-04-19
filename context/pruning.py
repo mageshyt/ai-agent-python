@@ -80,7 +80,7 @@ class SlidingWindowPruner:
                 preserved_ids.add(id(msg))
                 total_tokens += (msg.token_count or self._count_message_tokens(msg))
 
-        # Explicitly preserve sticky older messages before normal prioritization.
+        # explicitly preserve sticky older messages before normal prioritization.
         sticky_older = [m for m in non_system if id(m) not in preserved_ids and self._is_sticky(m)]
         sticky_older_sorted = sorted(sticky_older, key=lambda m: -idx_map[id(m)])
 
@@ -91,7 +91,7 @@ class SlidingWindowPruner:
                 preserved_ids.add(id(msg))
                 total_tokens += msg_token
 
-        # Fill remaining budget with higher-priority older messages.
+        # fill remaining budget with higher-priority older messages.
         older_candidates = [m for m in non_system if id(m) not in preserved_ids]
         older_candidates_sorted = sorted(
             older_candidates,
@@ -106,7 +106,7 @@ class SlidingWindowPruner:
 
             msg_token = msg.token_count or self._count_message_tokens(msg)
 
-            # Keep older tool results up to limit
+            # keep older tool results up to limit
             if msg.role == "tool":
                 if kept_older_tool_results < self.config.keep_recent_tool_results and total_tokens + msg_token <= self.config.max_window_tokens:
                     preserved.append(msg)
