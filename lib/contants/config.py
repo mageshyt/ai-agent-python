@@ -50,4 +50,5 @@ MAX_FILE = 1000  # maximum number of files to read in grep tool to prevent exces
 MAX_CONTENT_SIZE = (
     1024 * 100
 )  # 100kb - maximum content size to read from files or web responses to prevent excessive memory usage
-MIN_MESSAGE_LIMIT = 5  # min nuber of message needed for summarization
+MIN_MESSAGE_LIMIT = 10  # min number of message needed for summarization
+CONTEXT_RESET_SIZE = 0.8  # percentage of messages to retain when resetting context, must be between 0 and 1
