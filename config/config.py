@@ -41,6 +41,21 @@ class ShellEnvironmentPolicy(BaseModel):
     )
     set_vars: dict[str, str] = Field(default_factory=dict)
 
+
+class PruningPolicy(BaseModel):
+    max_window_tokens: int = 32_000
+    keep_recent_messages: int = 6
+    keep_recent_tool_results: int = 8
+    preserve_system: bool = True
+    preserve_sticky: bool = True
+    sticky_keywords: list[str] = Field(
+        default_factory=lambda: [
+            "decision", "refactored", "bug", "fix", "api",
+            "config", "important", "critical", "created",
+            "deleted", "moved", "renamed",
+        ]
+    )
+
 class Config(BaseModel):
     model:ModelConfig = Field(default_factory=ModelConfig)
     cwd : Path = Field(default_factory=Path.cwd)
@@ -48,6 +63,7 @@ class Config(BaseModel):
     max_consecutive_tool_failures: int = 5
     max_tool_output_tokens : int = 50_000
     shell_environment : ShellEnvironmentPolicy = Field(default_factory=ShellEnvironmentPolicy)
+    pruning: PruningPolicy = Field(default_factory=PruningPolicy)
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict) 
 
     user_instructions:str | None = None

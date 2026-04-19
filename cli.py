@@ -224,10 +224,13 @@ class CLI:
                     self.tui.compaction_started()
 
                 case AgentEventType.COMPACTION_FINISHED:
-                    agent_name = event.data.get('agent_name', 'unknown')
                     summary = event.data.get('summary', '')
                     usage = event.data.get('usage')
                     self.tui.compaction_finished( summary, usage)    
+
+                case AgentEventType.COMPACTION_FAILED:
+                    reason = event.data.get('reason', 'Unknown reason')
+                    self.tui.warning(f"Context compaction failed: {reason}")
 
 
         self.tui.end_assistant()

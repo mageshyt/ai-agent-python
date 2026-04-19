@@ -1,7 +1,10 @@
 [model]
 # name  = "arcee-ai/trinity-large-preview:free"
 # name = "stepfun/step-3.5-flash:free"
-name = "nvidia/nemotron-3-super-120b-a12b:free"
+# name = "nvidia/nemotron-3-super-120b-a12b:free"
+name = "MiniMax-M2.7"
+# name = "trinity-nano-preview-mlx"
+context_window = 5000
 
 [mcp_servers.browsermcp]
 command = "npx"
@@ -18,3 +21,11 @@ env = { MEMORY_FILE_PATH = "/Users/magesh/.config/memory.jsonl" }
 # [mcp_servers.filesystem]
 # command = "npx"
 # args = [  "-y","@modelcontextprotocol/server-filesystem","/app","/tmp"]
+
+[pruning]
+max_window_tokens = 32000
+keep_recent_messages = 6
+keep_recent_tool_results = 8
+preserve_system = true
+preserve_sticky = true
+sticky_keywords = ["decision","refactored","bug","fix","api","config","important","critical","created","deleted","moved","renamed"]

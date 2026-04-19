@@ -12,9 +12,13 @@ from tools.base import ToolResult
 class Agent:
     def __init__(self,config:Config) -> None:
         self.config = config
-        self.session:Session = Session(config)
+        self.session: Session = Session(config)
     
     async def run(self, message: str) -> AsyncGenerator[AgentEvent, None]:
+        if not self.session or not self.session.context_manager:
+            yield AgentEvent.agent_error(agent_name=self.session.agentId, message="Session is not properly initialized.")
+            return
+
         yield AgentEvent.agent_started(agent_name=self.session.agentId , message=message)
         self.session.context_manager.add_user_message(message)
         final_response:str | None = None
@@ -31,12 +35,15 @@ class Agent:
         if (not self.session or not self.session.client):
             yield AgentEvent.agent_error(agent_name=self.session.agentId, message="LLM client is not initialized.")
             return
-        print("TOKENS USED IN THIS SESSION: ", self.session.context_manager.get_total_usage())
         max_turns = self.config.max_turns if self.config.max_turns else 10
         max_consecutive_tool_failures = max(1, self.config.max_consecutive_tool_failures)
         consecutive_tool_failures = 0
         tools = self.session.tool_registry.get_schemas()
         usage : TokenUsage | None = None
+
+        if not self.session.context_manager or not self.session.client or not self.session.chat_compactor or not self.session.prune_manager:
+            yield AgentEvent.agent_error(agent_name=self.session.agentId, message="Session is not properly initialized.")
+            return
 
         for _ in range(max_turns):
             self.session.increment_turn()
@@ -44,16 +51,28 @@ class Agent:
 
             if self.session.context_manager.is_need_to_reset():
                 yield AgentEvent(type=AgentEventType.COMPACTION_STARTED, data={"agent_name": self.session.agentId})
+                compaction_succeeded = False
                 try:
                     summary, summary_usage = await self.session.chat_compactor.compress(self.session.context_manager)
                     if summary and summary_usage:
                         self.session.context_manager.replace_chat_session(summary)
                         yield AgentEvent(type=AgentEventType.COMPACTION_FINISHED, data={"agent_name": self.session.agentId, "summary": summary, "usage": summary_usage.__dict__})
+                        compaction_succeeded = True
                     else:
                         yield AgentEvent(type=AgentEventType.COMPACTION_FAILED, data={"agent_name": self.session.agentId, "reason": "Empty summary or usage"})
                 except Exception as e:
                     yield AgentEvent(type=AgentEventType.COMPACTION_FAILED, data={"agent_name": self.session.agentId, "reason": str(e)})
+
+                if not compaction_succeeded and self.session.context_manager.is_need_to_reset():
+                    yield AgentEvent.agent_error(
+                        agent_name=self.session.agentId,
+                        message="Context compaction failed and context is still over limit. Stopping to avoid repeated failures.",
+                    )
+                    break
             
+            if self.session.prune_manager.should_prune(self.session.context_manager):
+                self.session.prune_manager.prune(self.session.context_manager)
+                # TODO: we can yield a pruning event here if we want to display something in the UI when pruning happens
             message = self.session.context_manager.get_context()
             tool_calls:list[ToolCall] = []
         
@@ -165,4 +184,3 @@ class Agent:
                 await self.session.client.close()
             if self.session.mcp_manager:
                 await self.session.mcp_manager.shutdown()
-            self.session = None
