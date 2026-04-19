@@ -14,6 +14,13 @@ class PruningConfig:
     sticky_keywords: list[str] | None = None
 
     def __post_init__(self):
+        if self.max_window_tokens <= 0:
+            raise ValueError("max_window_tokens must be > 0")
+        if self.keep_recent_messages <= 0:
+            raise ValueError("keep_recent_messages must be > 0")
+        if self.keep_recent_tool_results < 0:
+            raise ValueError("keep_recent_tool_results must be >= 0")
+
         if self.sticky_keywords is None:
             self.sticky_keywords = [
                 "decision", "refactored", "bug", "fix", "api",
@@ -27,6 +34,23 @@ class SlidingWindowPruner:
 
     def __init__(self, config: PruningConfig | None = None):
         self.config = config or PruningConfig()
+        self._cached_signature: tuple[int, int] | None = None
+        self._cached_total_tokens: int = 0
+
+    def _context_signature(self, messages: list[MessageItem]) -> tuple[int, int]:
+        if not messages:
+            return (0, 0)
+        return (len(messages), id(messages[-1]))
+
+    def _compute_total_tokens(self, messages: list[MessageItem]) -> int:
+        signature = self._context_signature(messages)
+        if self._cached_signature == signature:
+            return self._cached_total_tokens
+
+        total = sum(m.token_count or self._count_message_tokens(m) for m in messages)
+        self._cached_signature = signature
+        self._cached_total_tokens = total
+        return total
 
     def prune(self, context_manager: ContextManager) -> int:
         messages = context_manager._messages
@@ -56,6 +80,17 @@ class SlidingWindowPruner:
                 preserved_ids.add(id(msg))
                 total_tokens += (msg.token_count or self._count_message_tokens(msg))
 
+        # Explicitly preserve sticky older messages before normal prioritization.
+        sticky_older = [m for m in non_system if id(m) not in preserved_ids and self._is_sticky(m)]
+        sticky_older_sorted = sorted(sticky_older, key=lambda m: -idx_map[id(m)])
+
+        for msg in sticky_older_sorted:
+            msg_token = msg.token_count or self._count_message_tokens(msg)
+            if total_tokens + msg_token <= self.config.max_window_tokens:
+                preserved.append(msg)
+                preserved_ids.add(id(msg))
+                total_tokens += msg_token
+
         # Fill remaining budget with higher-priority older messages.
         older_candidates = [m for m in non_system if id(m) not in preserved_ids]
         older_candidates_sorted = sorted(
@@ -66,6 +101,9 @@ class SlidingWindowPruner:
         kept_older_tool_results = 0
 
         for msg in older_candidates_sorted:
+            if total_tokens >= self.config.max_window_tokens:
+                break
+
             msg_token = msg.token_count or self._count_message_tokens(msg)
 
             # Keep older tool results up to limit
@@ -74,7 +112,8 @@ class SlidingWindowPruner:
                     preserved.append(msg)
                     preserved_ids.add(id(msg))
                     total_tokens += msg_token
-                    kept_older_tool_results += 1
+                    if not self._is_sticky(msg):
+                        kept_older_tool_results += 1
                     continue
 
 
@@ -89,6 +128,8 @@ class SlidingWindowPruner:
         removed_count = len(messages) - len(preserved)
         
         context_manager._messages = preserved
+        self._cached_signature = self._context_signature(preserved)
+        self._cached_total_tokens = total_tokens
         return removed_count
 
 
@@ -112,18 +153,13 @@ class SlidingWindowPruner:
         """Lower number = higher priority (keep longer)."""
         if message.role == "system":
             return 0
-        if self._is_sticky(message):
-            return 1
         if message.role == "tool":
-            return 2
+            return 1
         if message.role == "assistant":
-            return 3
-        return 4  # user messages
+            return 2
+        return 3  # user messages
 
     def should_prune(self, context_manager: ContextManager) -> bool:
         """Check if pruning is needed based on token count."""
-        total = sum(
-            m.token_count or count_tokens(m.content) 
-            for m in context_manager._messages
-        )
+        total = self._compute_total_tokens(context_manager._messages)
         return total >= self.config.max_window_tokens
