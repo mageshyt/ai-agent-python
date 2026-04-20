@@ -3,8 +3,8 @@ import re
 import subprocess
 from pathlib import Path
 from agent.agent import Agent
-from agent.events import AgentEventType
 from config.config import Config
+from agent.events import AgentEventType
 from ui.tui import TUI, get_console
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import  Completer, Completion
@@ -20,7 +20,7 @@ console = get_console()
 COMMANDS = [
     "/help", "/exit", "/quit", "/clear",
     "/config", "/model", "/stats", "/tools",
-    "/save", "/sessions",
+    "/save", "/sessions", "/mcp"
 ]
 
 class SystemCommandCompleter(Completer):
@@ -114,7 +114,7 @@ command_completer = SystemCommandCompleter(COMMANDS)
 class CLI:
     def __init__(self,config:Config):
         self.agent : Agent | None = None
-        self.config = config
+        self.config:Config = config
         self.tui = TUI(console,config)
         self.filesystem_completer = self._get_filesystem_completer(Path(config.cwd))
 
@@ -290,6 +290,13 @@ class CLI:
                     self.tui.show_help()
                 elif cmd == "/clear":
                     console.clear()
+                elif cmd == "/mcp":
+                    mcp_servers = self.agent.session.mcp_manager.get_all_servers()
+                    if mcp_servers:
+                        self.tui.show_mcp_servers(mcp_servers)
+                    else:
+                        self.tui.warning("No MCP servers registered.")
+
                 else:
                     task = asyncio.create_task(self._process_message(cmd))
                     try:

@@ -1037,6 +1037,22 @@ class TUI:
             )
         )
 
+    def show_mcp_servers(self, servers: list[dict[str, Any]]) -> None:
+        """Display MCP server status"""
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Server", style="dim", no_wrap=True)
+        table.add_column("Status", style="dim", no_wrap=True)
+        table.add_column("Available tools", style="dim")
+
+        for server in servers:
+            name = server.get("name", "unknown")
+            status = server.get("status", "unknown")
+            tool_count = server.get("tools", "unknown")
+            status_style = "success" if status == "connected" else "error" if status == "error" else "warning" if status == "starting" else "muted"
+            table.add_row(Text(name,style="white"), Text(status, style=status_style), Text(str(tool_count), style="muted"))
+
+        self.console.print(table)
+
     def show_help(self) -> None:
         help_text = """\
 ## Commands
