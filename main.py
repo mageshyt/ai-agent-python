@@ -4,6 +4,9 @@ from typing import Any
 import click
 
 from pathlib import Path
+
+logging.basicConfig(level=logging.WARN, format='%(name)s - %(levelname)s - %(message)s')
+
 from cli import CLI
 from config.loader import load_config
 from asyncio import run

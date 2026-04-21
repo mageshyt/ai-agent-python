@@ -1,6 +1,8 @@
 from __future__ import annotations
 import asyncio
 from typing import AsyncGenerator
+import logging
+import time
 
 from agent.events import AgentEvent, AgentEventType
 from agent.session import Session
@@ -8,6 +10,7 @@ from config.config import Config
 from lib.response import StreamEventType, TokenUsage, ToolCall, ToolResultMessage
 from tools.base import ToolResult
 
+logger = logging.getLogger(__name__)
 
 class Agent:
     def __init__(self,config:Config) -> None:
@@ -31,15 +34,13 @@ class Agent:
 
 
     async def  _agentic_loop(self)->AsyncGenerator[AgentEvent, None]:
-
         if (not self.session or not self.session.client):
             yield AgentEvent.agent_error(agent_name=self.session.agentId, message="LLM client is not initialized.")
             return
         max_turns = self.config.max_turns if self.config.max_turns else 10
         max_consecutive_tool_failures = max(1, self.config.max_consecutive_tool_failures)
         consecutive_tool_failures = 0
-        tools = self.session.tool_registry.get_schemas()
-        usage : TokenUsage | None = None
+        print(self.session.context_manager._total_usage.__dict__)
 
         if not self.session.context_manager or not self.session.client or not self.session.chat_compactor or not self.session.prune_manager:
             yield AgentEvent.agent_error(agent_name=self.session.agentId, message="Session is not properly initialized.")
@@ -48,31 +49,31 @@ class Agent:
         for _ in range(max_turns):
             self.session.increment_turn()
             response_text = ""
+            usage : TokenUsage | None = None
 
             if self.session.context_manager.is_need_to_reset():
                 yield AgentEvent(type=AgentEventType.COMPACTION_STARTED, data={"agent_name": self.session.agentId})
                 compaction_succeeded = False
                 try:
                     summary, summary_usage = await self.session.chat_compactor.compress(self.session.context_manager)
+                    print("Compaction summary:", summary, "Usage:", summary_usage.__dict__ if summary_usage else None)
                     if summary and summary_usage:
                         self.session.context_manager.replace_chat_session(summary)
                         yield AgentEvent(type=AgentEventType.COMPACTION_FINISHED, data={"agent_name": self.session.agentId, "summary": summary, "usage": summary_usage.__dict__})
                         compaction_succeeded = True
-                    else:
-                        yield AgentEvent(type=AgentEventType.COMPACTION_FAILED, data={"agent_name": self.session.agentId, "reason": "Empty summary or usage"})
+                    # else:
+                    #     yield AgentEvent(type=AgentEventType.COMPACTION_FAILED, data={"agent_name": self.session.agentId, "reason": "Empty summary or usage"})
                 except Exception as e:
                     yield AgentEvent(type=AgentEventType.COMPACTION_FAILED, data={"agent_name": self.session.agentId, "reason": str(e)})
 
-                if not compaction_succeeded and self.session.context_manager.is_need_to_reset():
-                    yield AgentEvent.agent_error(
-                        agent_name=self.session.agentId,
-                        message="Context compaction failed and context is still over limit. Stopping to avoid repeated failures.",
-                    )
-                    break
+                # if not compaction_succeeded and self.session.context_manager.is_need_to_reset():
+                #     yield AgentEvent.agent_error(
+                #         agent_name=self.session.agentId,
+                #         message="Context compaction failed and context is still over limit. Stopping to avoid repeated failures.",
+                #     )
+                #     break
             
-            if self.session.prune_manager.should_prune(self.session.context_manager):
-                self.session.prune_manager.prune(self.session.context_manager)
-                # TODO: we can yield a pruning event here if we want to display something in the UI when pruning happens
+            tools = self.session.tool_registry.get_schemas()
             message = self.session.context_manager.get_context()
             tool_calls:list[ToolCall] = []
         
@@ -108,6 +109,10 @@ class Agent:
                 # if there are no tool calls, we can end the agentic loop and return the final response
                 if usage:
                     self.session.context_manager.add_usage(usage)
+
+                if self.session.prune_manager.should_prune(self.session.context_manager):
+                    # TODO: we can consider yielding an event here to indicate pruning is happening, and include details about what was pruned for better observability
+                    self.session.prune_manager.prune(self.session.context_manager)
 
                 break
             for tool_call in tool_calls:
@@ -153,6 +158,11 @@ class Agent:
             for tool_result in tool_call_result:
                 self.session.context_manager.add_tool_result(tool_result.tool_call_id, tool_result.content)
 
+            if usage:
+                self.session.context_manager.add_usage(usage)
+
+            if self.session.prune_manager.should_prune(self.session.context_manager):
+                self.session.prune_manager.prune(self.session.context_manager)
             if batch_failed_calls > 0:
                 consecutive_tool_failures += batch_failed_calls
             else:
@@ -175,7 +185,10 @@ class Agent:
         return tc, name, result
 
     async def __aenter__(self) -> Agent:
+        start = time.perf_counter()
         await self.session.initialize()
+        init_time = time.perf_counter() - start
+        logger.warning(f"Agent initialized in {init_time:.3f}s")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
