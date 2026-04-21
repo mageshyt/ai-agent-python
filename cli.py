@@ -1,7 +1,9 @@
 import asyncio
 import re
 import subprocess
+import time
 from pathlib import Path
+from typing import Callable
 from agent.agent import Agent
 from config.config import Config
 from agent.events import AgentEventType
@@ -43,8 +45,30 @@ class SystemCommandCompleter(Completer):
                 )
 
 class FileMentionCompleter(Completer):
-    def __init__(self, cache):
-        self.cache = cache
+    def __init__(
+        self,
+        cache: list[str] | None = None,
+        cache_provider: Callable[[], list[str]] | None = None,
+        refresh_interval: float = 2.0,
+    ):
+        self.cache = cache or []
+        self.cache_provider = cache_provider
+        self.refresh_interval = refresh_interval
+        self._last_refresh = 0.0
+
+    def _get_cache(self) -> list[str]:
+        if not self.cache_provider:
+            return self.cache
+
+        now = time.monotonic()
+        if now - self._last_refresh >= self.refresh_interval:
+            try:
+                self.cache = self.cache_provider()
+            except Exception:
+                pass
+            self._last_refresh = now
+
+        return self.cache
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
@@ -55,9 +79,10 @@ class FileMentionCompleter(Completer):
 
         typed = match.group(1)
         typed_lower = typed.lower()
+        cache = self._get_cache()
         
         # Fuzzy/Substring match against the cached files
-        matches = [f for f in self.cache if typed_lower in f.lower()]
+        matches = [f for f in cache if typed_lower in f.lower()]
         
         # Sort so that exact prefix matches appear first
         matches.sort(key=lambda x: (not x.lower().startswith(typed_lower), x))
@@ -360,8 +385,17 @@ class CLI:
         )
     
     def _get_filesystem_completer(self, cwd: Path) -> Completer:
+        initial_cache = self._build_filesystem_cache(cwd)
+        return FileMentionCompleter(
+            cache=initial_cache,
+            cache_provider=lambda: self._build_filesystem_cache(cwd),
+            refresh_interval=2.0,
+        )
+
+    def _build_filesystem_cache(self, cwd: Path) -> list[str]:
         import os
-        file_list = []
+
+        file_list: list[str] = []
         for root, dirs, files in os.walk(cwd):
             if any(ignored in root.split(os.sep) for ignored in IGNORED_DIRECTORIES):
                 continue
@@ -373,4 +407,4 @@ class CLI:
                 if os.name == 'nt':
                     rel_path = rel_path.replace('\\', '/')
                 file_list.append(rel_path)
-        return FileMentionCompleter(cache=file_list)
+        return file_list
