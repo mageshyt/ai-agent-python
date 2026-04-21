@@ -31,6 +31,7 @@ class MCPClient:
         self.status = MCPServerStatus.DISCONNECTED
         self._client:Client | None = None
         self._tools:dict[str,MCPToolInfo] = dict()
+        self._connect_lock = asyncio.Lock()
 
 
 
@@ -54,43 +55,45 @@ class MCPClient:
                         log_file=Path(os.devnull),
             )
         else:
+            if not self.config.url:
+                raise ValueError(f"MCP server '{self.name}' missing URL for SSE transport")
             return SSETransport(url=self.config.url)
 
     async def connect(self)->None:
-        if self.status == MCPServerStatus.CONNECTED:
-            return 
+        async with self._connect_lock:
+            if self.status == MCPServerStatus.CONNECTED and self._client is not None:
+                return
 
-        self.status = MCPServerStatus.CONNECTING
+            self.status = MCPServerStatus.CONNECTING
 
-        try:
-            self._client = Client(transport = self._create_transport())
+            try:
+                self._client = Client(transport=self._create_transport())
 
-            await self._client.__aenter__()
+                await self._client.__aenter__()
 
+                tool_result = await self._client.list_tools()
+                self._tools.clear()
+                for tool in tool_result:
+                    self._tools[tool.name] = MCPToolInfo(
+                            name = tool.name,
+                            description= tool.description or "",
+                            input_schema=(
+                                tool.inputSchema if hasattr(tool,"inputSchema") else {}
+                            ),
+                            server_name= self.name
+                    )
 
-            tool_result = await self._client.list_tools()
+                self.status = MCPServerStatus.CONNECTED
 
-            for tool in tool_result:
-                self._tools[tool.name] = MCPToolInfo(
-                        name = tool.name,
-                        description= tool.description or "",
-                        input_schema=(
-                            tool.inputSchema if hasattr(tool,"inputSchema") else {}
-                        ),
-                        server_name= self.name
-                )
+            except asyncio.CancelledError:
+                self.status = MCPServerStatus.ERROR
+                await self._safe_close_client()
+                raise
 
-            self.status = MCPServerStatus.CONNECTED
-
-        except asyncio.CancelledError:
-            self.status = MCPServerStatus.ERROR
-            await self._safe_close_client()
-            raise
-
-        except Exception as e:
-            self.status = MCPServerStatus.ERROR
-            await self._safe_close_client()
-            raise e
+            except Exception as e:
+                self.status = MCPServerStatus.ERROR
+                await self._safe_close_client()
+                raise e
 
 
     async def disconnect(self) -> None:
@@ -130,10 +133,8 @@ class MCPClient:
 
         output = []
         for item in result.content:
-            if hasattr(item, "text"):
-                output.append(item.text)
-            else:
-                output.append(str(item))
+            text = getattr(item, "text", None)
+            output.append(text if isinstance(text, str) else str(item))
 
         return {
             "output": "\n".join(output),
