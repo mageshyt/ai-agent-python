@@ -44,6 +44,26 @@ BLOCKED_COMMANDS = {
     "init 6",
 }
 
+SAFE_PATTERNS = [
+    r"^(ls|dir|pwd|cd|echo|cat|head|tail|less|more|find|grep|awk|sed|cut|sort|uniq|wc|diff|du|df|free|uptime|whoami|id)\b",
+    r"^(find|locate|which|whereis|file|stat)(\s|$)",
+    # read-only commands
+    r"^git\s+(status|log|diff|show|branch|remote|tag)(\s|$)",
+    r"^(npm|yarn|pnpm)\s+(list|ls|outdated)(\s|$)",
+    r"^pip\s+(list|show|freeze)(\s|$)",
+    r"^cargo\s+(tree|search)(\s|$)",
+    # text searching/processing commands
+    r"^(grep|awk|sed|cut|sort|uniq|tr|diff|comm)(\s|$)",
+    # system info
+    r"^(date|cal|uptime|whoami|id|groups|hostname|uname)(\s|$)",
+    r"^(env|printenv|set)$",
+    # Process info
+    r"^(ps|top|htop|pgrep)(\s|$)",  r"^(date|cal|uptime|whoami|id|groups|hostname|uname)(\s|$)",
+    r"^(env|printenv|set)$",
+    # Process info
+    r"^(ps|top|htop|pgrep)(\s|$)",
+]
+
 BLOCKED_FILES = [".env", ".env.*", "*.pem", "*.key", "credentials.json", "secrets.*"]
 
 MAX_FILE = 1000  # maximum number of files to read in grep tool to prevent excessive memory usage
