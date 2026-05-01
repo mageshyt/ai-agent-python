@@ -90,7 +90,6 @@ class ToolRegistry:
                 )
 
                 approval_status = await approval_manager.check_approval(request)
-                print(f">>>>>> Approval status for tool '{name}': {approval_status}")
 
                 if approval_status == ApprovalStatus.REJECTED:
                     logger.info(f"Tool invocation for '{name}' was rejected by approval manager.")

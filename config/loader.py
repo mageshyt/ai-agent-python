@@ -48,7 +48,6 @@ def load_config(cwd: Path | None = None) -> Config:
         # collect the agent.md file
         config_dict["user_instructions"] = _get_agent_md_files(cwd)
 
-    print(config_dict)
     if "approval" in config_dict:
         approval_value = config_dict["approval"]
         if isinstance(approval_value['status'], str):
