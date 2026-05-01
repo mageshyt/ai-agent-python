@@ -64,6 +64,30 @@ SAFE_PATTERNS = [
     r"^(ps|top|htop|pgrep)(\s|$)",
 ]
 
+DANGEROUS_PATTERNS = [
+    # File system destruction
+    r"rm\s+(-rf?|--recursive)\s+[/~]",
+    r"rm\s+-rf?\s+\*",
+    r"rmdir\s+[/~]",
+    r"dd\s+if=",
+    r"mkfs",
+    r"fdisk",
+    r"parted",
+    r"shutdown",
+    r"reboot",
+    r"halt",
+    r"poweroff",
+    r"init\s+[06]",
+    r"chmod\s+(-R\s+)?777\s+[/~]",
+    r"chown\s+-R\s+.*\s+[/~]",
+    r"nc\s+-l",
+    r"netcat\s+-l",
+    r"curl\s+.*\|\s*(bash|sh)",
+    r"wget\s+.*\|\s*(bash|sh)",
+    r":\(\)\s*\{\s*:\|:&\s*\}\s*;",
+]
+
+
 BLOCKED_FILES = [".env", ".env.*", "*.pem", "*.key", "credentials.json", "secrets.*"]
 
 MAX_FILE = 1000  # maximum number of files to read in grep tool to prevent excessive memory usage
