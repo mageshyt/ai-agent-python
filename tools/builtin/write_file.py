@@ -63,7 +63,7 @@ class WriteFile(Tool):
             params=invocation.params,
             description=f"You are about to {action} the file at path: {path}. Do you want to proceed?",
             diff=diff,
-            is_dangerous= not is_new_file and old_content != params.content
+            is_dangerous= True
         )
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:

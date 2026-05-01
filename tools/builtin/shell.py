@@ -32,7 +32,7 @@ def _match_blocked(command: str) -> str | None:
 
     normalised = " ".join(tokens).lower()
 
-    if is_dangerous_command(normalised) and not is_safe_command(normalised):
+    if is_dangerous_command(normalised):
         return normalised
     return None
 
@@ -54,16 +54,20 @@ class ShellTool(Tool):
         params = ShellParams(**invocation.params)
         command = params.command
         matched = _match_blocked(command)
-        print("Matched command:", matched)
-        if matched:
-            return ToolConfirmation(
-                tool_name=self.name,
-                params=invocation.params,
-                description=f"Blocked command detected: '{matched}' is not allowed for security reasons. Do you want to proceed with executing the command?",
-                command=command,
-                is_dangerous=True
-            )
-        return None
+
+        description = (
+            f"Command appears blocked: '{matched}'" if matched
+            else "You are about to execute a shell command. Do you want to proceed?"
+        )
+
+        return ToolConfirmation(
+            tool_name=self.name,
+            params=invocation.params,
+            description=description,
+            command=command,
+            is_dangerous= bool(matched),
+            affected_paths=None,
+        )
 
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:

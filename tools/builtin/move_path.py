@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from lib.paths import ensure_parent_directory
 from lib import resolve_path
-from tools.base import Tool, ToolInvocation, ToolKind, ToolResult
+from tools.base import Tool, ToolConfirmation, ToolInvocation, ToolKind, ToolResult
 
 
 class MovePathParams(BaseModel):
@@ -25,6 +25,31 @@ class MovePathTool(Tool):
     )
     kind = ToolKind.WRITE
     schema = MovePathParams
+
+
+    async def get_confirmation(self, invocation: ToolInvocation) -> ToolConfirmation | None:
+        params = MovePathParams(**invocation.params)
+
+        if params.dry_run:
+            return None
+
+        src_path = resolve_path(invocation.cwd, params.src)
+        dest_path = resolve_path(invocation.cwd, params.dest)
+        final_dest = self._compute_final_dest(src_path, dest_path)
+
+        description = (
+            f"You are about to move '{src_path}' to '{final_dest}'. "
+            f"Overwrite: {params.overwrite}. Create dirs: {params.create_dirs}."
+        )
+
+        return ToolConfirmation(
+            tool_name=self.name,
+            params=invocation.params,
+            description=description,
+            is_dangerous=True,
+            command=None,
+            affected_paths=[src_path, final_dest],
+        )
 
 
     async def execute(self,invocation:ToolInvocation)->ToolResult:
