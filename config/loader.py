@@ -3,7 +3,7 @@ import logging
 
 from pathlib import Path
 from typing import Any
-from config.config import Config
+from config.config import ApprovalPolicy, Config
 from platformdirs import user_config_dir, user_data_dir
 from lib import CONFIG_FILE_NAME, ConfigError , AGENT_MD_FILE_NAME , APP_NAME
 
@@ -48,7 +48,14 @@ def load_config(cwd: Path | None = None) -> Config:
         # collect the agent.md file
         config_dict["user_instructions"] = _get_agent_md_files(cwd)
 
-
+    print(config_dict)
+    if "approval" in config_dict:
+        approval_value = config_dict["approval"]
+        if isinstance(approval_value['status'], str):
+            config_dict["approval"] = ApprovalPolicy(approval_value['status'])
+        else:
+            logger.warning(f"Invalid approval policy value: {approval_value['status']}. Defaulting to 'on_request'.")
+            config_dict["approval"] = ApprovalPolicy.ON_REQUEST
     # register mcp tools
     if "mcp_tools" not in config_dict:
         config_dict["mcp_tools"] = []
