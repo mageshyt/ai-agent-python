@@ -53,8 +53,8 @@ class ShellTool(Tool):
     async def get_confirmation(self, invocation: ToolInvocation) -> ToolConfirmation | None:
         params = ShellParams(**invocation.params)
         command = params.command
-
         matched = _match_blocked(command)
+        print("Matched command:", matched)
         if matched:
             return ToolConfirmation(
                 tool_name=self.name,

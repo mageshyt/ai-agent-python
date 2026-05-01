@@ -33,7 +33,7 @@ class WebScrapTool(Tool):
     kind = ToolKind.NETWORK
     schema = WebScrapParams
 
-
+    
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = WebScrapParams(**invocation.params)
 

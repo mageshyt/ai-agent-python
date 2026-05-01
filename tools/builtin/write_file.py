@@ -53,7 +53,7 @@ class WriteFile(Tool):
             path=path,
             old_content=old_content,
             new_content=params.content,
-            is_new_file=False
+            is_new_file=is_new_file
         )
 
         action = "create" if is_new_file else "overwrite"
