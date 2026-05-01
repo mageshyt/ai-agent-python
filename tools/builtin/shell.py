@@ -10,6 +10,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from config.config import Config
 from lib.contants.config import BLOCKED_COMMANDS
+from lib.safety import is_dangerous_command, is_safe_command
 from tools.base import Tool, ToolConfirmation, ToolInvocation, ToolKind, ToolResult
 
 class ShellParams(BaseModel):
@@ -31,13 +32,10 @@ def _match_blocked(command: str) -> str | None:
 
     normalised = " ".join(tokens).lower()
 
-    for blocked in BLOCKED_COMMANDS:
-        # Exact substring match on the normalised token stream catches
-        # whitespace variations (e.g. "rm  -rf  /" → "rm -rf /").
-        if blocked.lower() in normalised:
-            return blocked
-
+    if is_dangerous_command(normalised) and not is_safe_command(normalised):
+        return normalised
     return None
+
 
 
 class ShellTool(Tool):
