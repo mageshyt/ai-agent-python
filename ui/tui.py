@@ -20,7 +20,7 @@ from rich.rule import Rule
 from rich import box
 
 from config.config import Config
-from lib.contants.config import AGENT_ASCII_FONT, AGENT_DISPLAY_NAME, AGENT_TAGLINE
+from lib.contants.config import AGENT_ASCII_FONT, AGENT_DISPLAY_NAME
 from lib.paths import get_relative_path
 from lib.text import truncate_text_by_tokens
 from lib.contants.figures import (
@@ -33,7 +33,7 @@ from lib.contants.figures import (
     PLAY_ICON,
     TEARDROP_ASTERISK,
 )
-from tools.base import FileDiff, ToolKind
+from tools.base import FileDiff, ToolConfirmation, ToolKind
 
 # -- Import SPINNER_VERBS (handle hyphenated module name gracefully) ------
 try:
@@ -1084,6 +1084,8 @@ class TUI:
 """
         self.console.print(Markdown(help_text))
 
+    def handle_confirmation(self,confirmation: ToolConfirmation) -> bool:
+        pass
     # ─── Arg Rendering Helpers ────────────────────────────────────────────
 
     def _ordered_args(self, tool_name: str, args: dict[str, Any]) -> list[tuple[str, Any]]:

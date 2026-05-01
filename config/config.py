@@ -1,4 +1,5 @@
 from __future__ import annotations
+from enum import Enum
 import os
 
 from typing import Any
@@ -55,12 +56,12 @@ class PruningPolicy(BaseModel):
             "deleted", "moved", "renamed",
         ]
     )
-class ApprovalPolicy(BaseModel):
-    ON_REQUEST: str = "on_request"
-    AUTOMATIC: str = "automatic"
-    AUTO_EDIT : str = "auto_edit"
-    NEVER: str = "never"
-    YOLO: str = "yolo" # for testing, will execute all tool calls without confirmation, use with caution
+class ApprovalPolicy(str, Enum):
+    ON_REQUEST = "on_request"
+    AUTOMATIC = "automatic"
+    AUTO_EDIT = "auto_edit"
+    NEVER = "never"
+    YOLO = "yolo" # for testing, will execute all tool calls without confirmation, use with caution
 
 class Config(BaseModel):
     model:ModelConfig = Field(default_factory=ModelConfig)
@@ -76,7 +77,7 @@ class Config(BaseModel):
     debug: bool = False
 
     allowed_tools: list[str] | None = None
-    approval : ApprovalPolicy = Field(default_factory=ApprovalPolicy)
+    approval: ApprovalPolicy = ApprovalPolicy.ON_REQUEST
 
 
     @property

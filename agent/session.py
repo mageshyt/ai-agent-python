@@ -7,6 +7,7 @@ from context.compaction import ChatCompactor
 from context.context_manager import ContextManager
 from context.pruning import PruningConfig, SlidingWindowPruner
 from llm.client import LLMProvider
+from security.approval_manager import ApprovalManager
 from tools.discovery import ToolDiscoveryManger
 from tools.mcp.mcp_manager import MCPManager
 from tools.registry import create_tool_registry
@@ -32,6 +33,10 @@ class Session:
                 sticky_keywords=list(config.pruning.sticky_keywords),
             )
         )
+        self.approval_manager = ApprovalManager(
+            approval_policy=config.approval,
+            cwd=config.cwd,
+        )
 
         self.sessionId = str(uuid.uuid4())
         self.createdAt = datetime.now()
@@ -39,7 +44,7 @@ class Session:
         self._turn_count = 0 # to track the number of turns in the session
 
     async def initialize(self):
-        self.mcp_manager.start_background_tasks(self.tool_registry)
+        # self.mcp_manager.start_background_tasks(self.tool_registry)
         self.discovery_manager.discover_all() # discover tools again after registering mcp tools, so that we can update the tool registry with the new tools
         self.context_manager = ContextManager(self.config,tools=self.tool_registry.get_tools())
 

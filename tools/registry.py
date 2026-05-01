@@ -78,8 +78,7 @@ class ToolRegistry:
 
         if approval_manager:
             confirmation = await tool.get_confirmation(invocation)
-            print("[ToolRegistry] confirmation", confirmation)
-
+            logger.info(f"Tool '{name}' confirmation result: {confirmation}")
             if confirmation:
                 request = ApprovalRequest(
                     tool_name= name,
@@ -91,7 +90,7 @@ class ToolRegistry:
                 )
 
                 approval_status = await approval_manager.check_approval(request)
-                print("[Request, approval_status]", request, approval_status)
+                logger.info(f"Approval status for tool '{name}': {approval_status}")
 
                 if approval_status == ApprovalStatus.REJECTED:
                     logger.info(f"Tool invocation for '{name}' was rejected by approval manager.")
@@ -101,7 +100,7 @@ class ToolRegistry:
 
                 elif approval_status == ApprovalStatus.NEEDS_CONFIRMATION:
                     logger.info(f"Tool invocation for '{name}' needs user confirmation.")
-                    approved = approval_manager.request_approval(confirmation)
+                    approved = await approval_manager.request_approval(confirmation)
                     if not approved:
                         logger.info(f"Tool invocation for '{name}' was rejected by user.")
                         result = ToolResult.error_result(f"Tool invocation for '{name}' was rejected by user.", metadata={"tool_name": name})
