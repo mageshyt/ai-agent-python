@@ -1,13 +1,14 @@
-import re
 from  pathlib  import Path
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
 from config.config import ApprovalPolicy
 
 from lib import is_dangerous_command, is_safe_command
-from tools.base import ToolConfirmation
+
+if TYPE_CHECKING:
+    from tools import ToolConfirmation
 
 
 class ApprovalStatus(str, Enum):
@@ -29,8 +30,9 @@ class ApprovalManager:
         self,
         approval_policy: ApprovalPolicy,
         cwd : Path,
-        user_confirmation_callback: Callable[[ToolConfirmation], bool] | None = None,
+        user_confirmation_callback: Callable[['ToolConfirmation'], bool] | None = None,
     ):
+        print(f"ApprovalManager initialized with policy: {approval_policy}")
         self.approval_policy = approval_policy
         self.user_confirmation_callback = user_confirmation_callback
         self.cwd = cwd
@@ -80,13 +82,13 @@ class ApprovalManager:
                 return ApprovalStatus.APPROVED
             return ApprovalStatus.NEEDS_CONFIRMATION
 
-        if self.approval_policy in {ApprovalPolicy.AUTOMATIC , ApprovalPolicy.ON_REQUEST}:
+        if self.approval_policy in {ApprovalPolicy.AUTOMATIC}:
             return ApprovalStatus.APPROVED
 
 
         return ApprovalStatus.NEEDS_CONFIRMATION
 
-    async def request_approval(self, confirmation:ToolConfirmation):
+    async def request_approval(self, confirmation: 'ToolConfirmation'):
         if self.user_confirmation_callback:
             result = self.user_confirmation_callback(confirmation)
             return result
