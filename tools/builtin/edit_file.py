@@ -1,7 +1,7 @@
 from pathlib import Path
 from pydantic import BaseModel, Field
 from lib.paths import ensure_parent_directory, resolve_path
-from tools.base import FileDiff, Tool, ToolInvocation, ToolKind, ToolResult
+from tools.base import FileDiff, Tool, ToolConfirmation, ToolInvocation, ToolKind, ToolResult
 
 
 class EditParams(BaseModel):
@@ -142,6 +142,52 @@ class EditTool(Tool):
 
         return ToolResult.error_result(error_msg)
 
+    async def get_confirmation(self, invocation:ToolInvocation) -> ToolConfirmation | None:
+        params = EditParams(**invocation.params)
+        path = resolve_path(invocation.cwd, params.path)
+
+        is_new_file = not path.exists()
+
+        if is_new_file:
+            diff= FileDiff(
+                path=path,
+                old_content="",
+                new_content=params.new_string,
+                is_new_file=True
+            )
+
+            return ToolConfirmation(
+                tool_name=self.name,
+                params=invocation.params,
+                description=f"You are about to create a new file at '{path}' with {len(params.new_string.splitlines())} lines. Do you want to proceed?",
+                is_dangerous=False,
+                command=None,
+                diff=diff,
+                affected_paths=[path]
+            )
+        old_content = path.read_text(encoding="utf-8")
+
+        if params.replace_all:
+            new_content = old_content.replace(params.old_string, params.new_string)
+        else:
+            new_content = old_content.replace(params.old_string, params.new_string, 1)
+
+        diff = FileDiff(
+            path=path,
+            old_content=old_content,
+            new_content=new_content,
+            is_new_file=False
+        )
+        return ToolConfirmation(
+            tool_name=self.name,
+            params=invocation.params,
+            description=f"You are about to edit the file at '{path}'. This will replace {old_content.count(params.old_string) if params.replace_all else min(1, old_content.count(params.old_string))} occurrence(s) of the specified text. Do you want to proceed?",
+            is_dangerous=False,
+            command=None,
+            diff=diff,
+            affected_paths=[path]
+        )
+        
 
 
 if __name__ == "__main__":
