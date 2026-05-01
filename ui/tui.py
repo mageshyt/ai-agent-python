@@ -18,6 +18,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.rule import Rule
 from rich import box
+from rich.prompt import Prompt
 
 from config.config import Config
 from lib.contants.config import AGENT_ASCII_FONT, AGENT_DISPLAY_NAME
@@ -1085,7 +1086,61 @@ class TUI:
         self.console.print(Markdown(help_text))
 
     def handle_confirmation(self,confirmation: ToolConfirmation) -> bool:
-        pass
+        self._stop_verb_rotation()
+
+        if self._live_display is not None:
+            try:
+                self._live_display.stop()
+            except Exception:
+                pass
+            self._live_display = None
+
+        output: list = []
+        output.append(Text(confirmation.tool_name, style="tool"))
+
+        if confirmation.description:
+            output.append(Markdown(confirmation.description))
+
+        if confirmation.params:
+            args_table = self._render_args_table(confirmation.tool_name, confirmation.params)
+            output.append(args_table)
+
+        if confirmation.command:
+            output.append(Text(f"$ {confirmation.command}", style="warning"))
+
+        if confirmation.affected_paths:
+            paths_text = Text()
+            for path in confirmation.affected_paths:
+                rel_path = get_relative_path(path, self.cwd)
+                paths_text.append(f"- {rel_path}\n", style="path")
+            output.append(paths_text)
+
+        if confirmation.diff is not None:
+            diff_text = confirmation.diff.to_diff()
+            if diff_text.strip():
+                output.append(
+                    Syntax(
+                        diff_text,
+                        "diff",
+                        theme=CODE_THEME,
+                        word_wrap=True,
+                    )
+                )
+
+        self.console.print()
+        self.console.print(
+            Panel(
+                Group(*output),
+                title=Text("Approval required", style="warning"),
+                title_align="left",
+                border_style="warning",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+        )
+
+        response = Prompt.ask("\nApprove?", choices=["y", "n", "yes", "no"], default="n")
+        return response.lower() in {"y", "yes"}
     # ─── Arg Rendering Helpers ────────────────────────────────────────────
 
     def _ordered_args(self, tool_name: str, args: dict[str, Any]) -> list[tuple[str, Any]]:
