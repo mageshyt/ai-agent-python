@@ -95,6 +95,8 @@ class ToolConfirmation:
     description: str
     is_dangerous: bool = False
     command: str | None = None
+    diff : FileDiff | None = None
+    affected_paths: list[Path]  = field(default_factory=list)
 
 
 class Tool(ABC):

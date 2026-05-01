@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
-from config.config import Config
+from config.config import ApprovalPolicy, Config
+from security.approval_manager import ApprovalManager, ApprovalRequest, ApprovalStatus
 from tools import Tool
 import logging
 
@@ -49,7 +50,13 @@ class ToolRegistry:
         return tools
 
 
-    async def invoke_tool(self, name: str, params: dict[str, Any],cwd:Path|None) -> ToolResult:
+    async def invoke_tool(
+            self,
+            name: str,
+            params: dict[str, Any],
+            cwd:Path|None,
+            approval_manager: ApprovalManager | None = None,
+    ) -> ToolResult:
         tool = self.get_tool(name)
         if not tool:
             logger.error(f"Tool '{name}' not found in registry. Cannot invoke.")
@@ -65,8 +72,41 @@ class ToolRegistry:
         if cwd is None:
             cwd = Path.cwd() # default to current working directory if not provided
 
+        # check if any approval needed
+
+        invocation = ToolInvocation(cwd=cwd, params=params)
+
+        if approval_manager:
+            confirmation = await tool.get_confirmation(invocation)
+            print("[ToolRegistry] confirmation", confirmation)
+
+            if confirmation:
+                request = ApprovalRequest(
+                    tool_name= name,
+                    params=params,
+                    is_mutating= tool.is_mutating(),
+                    command = confirmation.command,
+                    is_dangerous = confirmation.is_dangerous,
+                    affected_path= confirmation.affected_paths
+                )
+
+                approval_status = await approval_manager.check_approval(request)
+                print("[Request, approval_status]", request, approval_status)
+
+                if approval_status == ApprovalStatus.REJECTED:
+                    logger.info(f"Tool invocation for '{name}' was rejected by approval manager.")
+                    result = ToolResult.error_result(f"Tool invocation for '{name}' was rejected by safe policy.", metadata={"tool_name": name})
+
+                    return result
+
+                elif approval_status == ApprovalStatus.NEEDS_CONFIRMATION:
+                    logger.info(f"Tool invocation for '{name}' needs user confirmation.")
+                    approved = approval_manager.request_approval(confirmation)
+                    if not approved:
+                        logger.info(f"Tool invocation for '{name}' was rejected by user.")
+                        result = ToolResult.error_result(f"Tool invocation for '{name}' was rejected by user.", metadata={"tool_name": name})
+                        return result
         try:
-            invocation = ToolInvocation(cwd=cwd, params=params)
             result = await tool.execute(invocation)
             return result
         except Exception as e:

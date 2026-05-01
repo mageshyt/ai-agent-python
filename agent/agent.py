@@ -1,6 +1,6 @@
 from __future__ import annotations
 import asyncio
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Callable
 import logging
 import time
 
@@ -8,14 +8,19 @@ from agent.events import AgentEvent, AgentEventType
 from agent.session import Session
 from config.config import Config
 from lib.response import StreamEventType, TokenUsage, ToolCall, ToolResultMessage
-from tools.base import ToolResult
+from tools.base import ToolConfirmation, ToolResult
 
 logger = logging.getLogger(__name__)
 
 class Agent:
-    def __init__(self,config:Config) -> None:
+    def __init__(
+            self,
+            config:Config,
+            confirmation_callback : Callable[[ToolConfirmation], bool] | None = None
+    ) -> None:
         self.config = config
         self.session: Session = Session(config)
+        self.session.approval_manager.user_confirmation_callback = confirmation_callback
     
     async def run(self, message: str) -> AsyncGenerator[AgentEvent, None]:
         if not self.session or not self.session.context_manager:
@@ -181,7 +186,7 @@ class Agent:
     async def _invoke(self,tc: ToolCall):
         name = tc.name if tc.name else "unknown_tool"
         args = tc.arguments if tc.arguments else {}
-        result = await self.session.tool_registry.invoke_tool(name, args, self.config.cwd)
+        result = await self.session.tool_registry.invoke_tool(name, args, self.config.cwd,self.session.approval_manager)
         return tc, name, result
 
     async def __aenter__(self) -> Agent:
