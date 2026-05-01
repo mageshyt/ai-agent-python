@@ -7,6 +7,7 @@ from typing import Callable
 from agent.agent import Agent
 from config.config import Config
 from agent.events import AgentEventType
+from tools.base import ToolConfirmation
 from ui.tui import TUI, get_console
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import  Completer, Completion
@@ -154,7 +155,7 @@ class CLI:
             str | None: final response from the agent, or None if there was an error
         """
 
-        async with Agent(self.config) as agent:
+        async with Agent(self.config,self.tui.handle_confirmation) as agent:
             self.agent = agent
             return await self._process_message(message)
 
@@ -278,7 +279,7 @@ class CLI:
         import time as _time
         _last_interrupt = 0.0
 
-        async with Agent(self.config) as agent:
+        async with Agent(self.config,self.tui.handle_confirmation) as agent:
             self.agent = agent 
             while True:
                 try:
