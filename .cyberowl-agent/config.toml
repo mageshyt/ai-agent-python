@@ -1,3 +1,5 @@
+hooks_enabled = true
+
 [model]
 # name  = "arcee-ai/trinity-large-preview:free"
 #name = "stepfun/step-3.5-flash:free"
@@ -32,3 +34,13 @@ sticky_keywords = ["decision","refactored","bug","fix","api","config","important
 
 [approval]
 status = "never"
+
+[[hooks]]
+name = "test_before_agent_turn"
+trigger = "before_agent_turn"
+command = 'python3 ./test/test_tool.py'
+
+[[hooks]]
+name = "test_after_tool"
+trigger = "after_tool_call"
+command = 'python3 ./test/test_tool.py'
