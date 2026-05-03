@@ -27,6 +27,7 @@ class Agent:
             yield AgentEvent.agent_error(agent_name=self.session.agentId, message="Session is not properly initialized.")
             return
 
+        await self.session.hooks.execute_before_agent(message)
         yield AgentEvent.agent_started(agent_name=self.session.agentId , message=message)
         self.session.context_manager.add_user_message(message)
         final_response:str | None = None
@@ -35,6 +36,7 @@ class Agent:
             if event.type == AgentEventType.TEXT_COMPLETE:
                 final_response = event.data.get("content") if event.data.get("content") else "No content"
 
+        await self.session.hooks.execute_after_agent(message, final_response if final_response else "")
         yield AgentEvent.agent_finished(agent_name=self.session.agentId , response=final_response, usage=None)
 
 
@@ -45,7 +47,6 @@ class Agent:
         max_turns = self.config.max_turns if self.config.max_turns else 10
         max_consecutive_tool_failures = max(1, self.config.max_consecutive_tool_failures)
         consecutive_tool_failures = 0
-        print(self.session.context_manager._total_usage.__dict__)
 
         if not self.session.context_manager or not self.session.client or not self.session.chat_compactor or not self.session.prune_manager:
             yield AgentEvent.agent_error(agent_name=self.session.agentId, message="Session is not properly initialized.")
@@ -186,7 +187,7 @@ class Agent:
     async def _invoke(self,tc: ToolCall):
         name = tc.name if tc.name else "unknown_tool"
         args = tc.arguments if tc.arguments else {}
-        result = await self.session.tool_registry.invoke_tool(name, args, self.config.cwd,self.session.approval_manager)
+        result = await self.session.tool_registry.invoke_tool(name, args, self.config.cwd,self.session.approval_manager, self.session.hooks)
         return tc, name, result
 
     async def __aenter__(self) -> Agent:

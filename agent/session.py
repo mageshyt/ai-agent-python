@@ -6,6 +6,7 @@ from config.config import Config
 from context.compaction import ChatCompactor
 from context.context_manager import ContextManager
 from context.pruning import PruningConfig, SlidingWindowPruner
+from hooks.hook_system import HookSystem
 from llm.client import LLMProvider
 from security.approval_manager import ApprovalManager
 from tools.discovery import ToolDiscoveryManger
@@ -37,6 +38,7 @@ class Session:
             approval_policy=config.approval,
             cwd=config.cwd,
         )
+        self.hooks = HookSystem(config)
 
         self.sessionId = str(uuid.uuid4())
         self.createdAt = datetime.now()
