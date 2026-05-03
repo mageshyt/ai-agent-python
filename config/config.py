@@ -63,12 +63,39 @@ class ApprovalPolicy(str, Enum):
     NEVER = "never"
     YOLO = "yolo" # for testing, will execute all tool calls without confirmation, use with caution
 
+class HookTrigger(str, Enum):
+    BEFORE_AGENT_TURN = "before_agent_turn"
+    AFTER_AGENT_TURN = "after_agent_turn"
+    BEFORE_TOOL_CALL = "before_tool_call"
+    AFTER_TOOL_CALL = "after_tool_call"
+    ON_ERROR = "on_error"
+
+class HookConfig(BaseModel):
+    name: str
+    command: str | None = None
+    trigger: HookTrigger
+    script: str | None = None
+    timeout: int = 30  # seconds to wait for hook to execute before timing out
+    enable: bool = True
+
+    @model_validator(mode="after")
+    def validate_hook(self) -> "HookConfig":
+        if self.enable:
+            if not self.command and not self.script:
+                raise ValueError("HookConfig must have either 'command' or 'script' set when 'enable' is True")
+            if self.command and self.script:
+                raise ValueError("HookConfig cannot have both 'command' and 'script' set when 'enable' is True")
+        return self
+
+
 class Config(BaseModel):
     model:ModelConfig = Field(default_factory=ModelConfig)
     cwd : Path = Field(default_factory=Path.cwd)
     max_turns : int = 100
     max_consecutive_tool_failures: int = 5
     max_tool_output_tokens : int = 50_000
+    hooks_enabled: bool = True
+    hooks: list[HookConfig] = Field(default_factory=list)
     shell_environment : ShellEnvironmentPolicy = Field(default_factory=ShellEnvironmentPolicy)
     pruning: PruningPolicy = Field(default_factory=PruningPolicy)
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict) 

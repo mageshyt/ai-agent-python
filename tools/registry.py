@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 from config.config import  Config
+from hooks.hook_system import HookSystem
 from tools import Tool
 import logging
 
@@ -56,22 +57,31 @@ class ToolRegistry:
             params: dict[str, Any],
             cwd:Path|None,
             approval_manager: ApprovalManager | None = None,
+            hook_system: HookSystem | None = None
     ) -> ToolResult:
         tool = self.get_tool(name)
         if not tool:
             logger.error(f"Tool '{name}' not found in registry. Cannot invoke.")
-            return ToolResult.error_result(f"Tool '{name}' not found in registry.",metadata={"tool_name": name})
+            result =  ToolResult.error_result(f"Tool '{name}' not found in registry.",metadata={"tool_name": name})
+            if hook_system:
+                await hook_system.execute_after_tool(name,params,result)
+            return result
 
         # validate params before invoking the tool
         validation_errors = tool.validate_params(params)
         if validation_errors:
             error_message = f"Parameter validation failed for tool '{name}': " + "; ".join(validation_errors)
             logger.error(error_message)
-            return ToolResult.error_result(error_message, metadata={"tool_name": name, "validation_errors": validation_errors})
+            result = ToolResult.error_result(error_message, metadata={"tool_name": name, "validation_errors": validation_errors})
+            if hook_system:
+                await hook_system.execute_after_tool(name,params,result)
+            return result
+
 
         if cwd is None:
             cwd = Path.cwd() # default to current working directory if not provided
-
+        
+        await hook_system.execute_before_tool(name,params) if hook_system else None
         # check if any approval needed
 
         invocation = ToolInvocation(cwd=cwd, params=params)
@@ -94,7 +104,7 @@ class ToolRegistry:
                 if approval_status == ApprovalStatus.REJECTED:
                     logger.info(f"Tool invocation for '{name}' was rejected by approval manager.")
                     result = ToolResult.error_result(f"Tool invocation for '{name}' was rejected by safe policy.", metadata={"tool_name": name})
-
+                    await hook_system.execute_after_tool(name,params,result) if hook_system else None
                     return result
 
                 elif approval_status == ApprovalStatus.NEEDS_CONFIRMATION:
@@ -103,15 +113,17 @@ class ToolRegistry:
                     if not approved:
                         logger.info(f"Tool invocation for '{name}' was rejected by user.")
                         result = ToolResult.error_result(f"Tool invocation for '{name}' was rejected by user.", metadata={"tool_name": name})
+                        await hook_system.execute_after_tool(name,params,result) if hook_system else None
                         return result
         try:
             result = await tool.execute(invocation)
+            await hook_system.execute_after_tool(name,params,result) if hook_system else None
             return result
         except Exception as e:
             logger.exception(f"Error invoking tool '{name}': {str(e)}")
-            return ToolResult.error_result(f"Error invoking tool '{name}': {str(e)}", metadata={"tool_name": name})
-
-
+            result = ToolResult.error_result(f"Error invoking tool '{name}': {str(e)}", metadata={"tool_name": name})
+            await hook_system.execute_after_tool(name,params,result) if hook_system else None
+            return result
 
     def get_tool(self, name: str) -> Tool | None:
         if name not in self._tools:
