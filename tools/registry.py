@@ -1,10 +1,10 @@
 from pathlib import Path
 from typing import Any
 from config.config import  Config
-from hooks.hook_system import HookSystem
 from tools import Tool
 import logging
 
+from hooks.hook_system import HookSystem
 from security.approval_manager import ApprovalManager, ApprovalRequest, ApprovalStatus
 from tools.subagent_config import get_subagent_definitions
 from tools.subagents import SubAgentTool

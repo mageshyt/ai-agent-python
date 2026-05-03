@@ -36,5 +36,5 @@ py-modules = ["main", "cli"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agent*", "config*", "context*", "lib*", "llm*", "propmpts*", "session*", "tools*", "ui*"]
-namespaces = true
+include = ["agent*", "config*", "context*", "lib*", "llm*", "propmpts*", "session*", "tools*", "ui*" , "security*", "utils*","hooks*"]
+namespaces = true./scripts/local_cli.sh reinstall

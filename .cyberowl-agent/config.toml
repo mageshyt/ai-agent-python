@@ -24,6 +24,17 @@ env = { MEMORY_FILE_PATH = "/Users/magesh/.config/memory.jsonl" }
 # command = "npx"
 # args = [  "-y","@modelcontextprotocol/server-filesystem","/app","/tmp"]
 
+
+[mcp_servers.excalidraw]
+command = "docker"
+args = [
+  "run",
+  "-i",
+  "--rm",
+  "-e", "EXPRESS_SERVER_URL=http://host.docker.internal:3000",
+  "-e", "ENABLE_CANVAS_SYNC=true",
+  "ghcr.io/yctimlin/mcp_excalidraw:latest"
+]
 [pruning]
 max_window_tokens = 32000
 keep_recent_messages = 6
