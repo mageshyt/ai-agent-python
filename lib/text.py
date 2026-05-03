@@ -3,8 +3,8 @@ def get_tokenizer(model:str="gpt-4"):
     try:
         encoding = tiktoken.encoding_for_model(model)
         return encoding.encode
-    except ImportError:
-        encoding = tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        encoding = tiktoken.encoding_for_model("gpt-4")
         return encoding.encode
 
 def count_tokens(text:str, model:str="gpt-4") -> int:
