@@ -49,14 +49,20 @@ class ContextManager:
 
 
     def add_user_message(self, content: str) -> None:
-        self._messages.append(MessageItem(role="user", content=content , token_count=count_tokens(content )))
+        self._messages.append(
+            MessageItem(
+                role="user",
+                content=content,
+                token_count=count_tokens(content,model=self._model),
+            )
+        )
 
     def add_assistant_message(self, content: str,tool_calls:list[dict[str,Any]] | None) -> None:
         self._messages.append(
                 MessageItem(
                     role="assistant", 
                     content=content,
-                    token_count=count_tokens(content),
+                    token_count=count_tokens(content,model=self._model),
                     tool_calls=tool_calls or []
                     )
                 )
@@ -71,7 +77,7 @@ class ContextManager:
         item= MessageItem(
                 role="tool",
                 content=content,
-                token_count=count_tokens(content),
+                token_count=count_tokens(content,model=self._model),
                 tool_call_id=tool_call_id
                 )
 
@@ -158,7 +164,7 @@ class ContextManager:
         - Action listed under 'COMPLETED ACTIONS' are already executed, so you should not execute them again, but you can use the information from those actions if needed.
         """
 
-        system_tokens = count_tokens(new_system_prompt)
+        system_tokens = count_tokens(new_system_prompt,model=self._model)
         self._messages.append(
             MessageItem(
                 role="system", 
@@ -176,7 +182,7 @@ class ContextManager:
 
         # acknowledgement message for assistant
         ack_content = "Context has been restored based on the provided summary. I will use this information to continue the conversation."
-        ack_tokens = count_tokens(ack_content)
+        ack_tokens = count_tokens(ack_content,model=self._model)
         self._messages.append(
             MessageItem(
                 role="assistant", 
@@ -198,7 +204,7 @@ class ContextManager:
         Focus only on the REMAINING ACTIONS and the current conversation to move forward effectively.
         """
 
-        continue_tokens = count_tokens(continue_content)
+        continue_tokens = count_tokens(continue_content,model=self._model)
         self._messages.append(
             MessageItem(
                 role="user", 
