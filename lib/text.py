@@ -1,4 +1,9 @@
 import tiktoken
+import json
+import hashlib
+from typing import Any
+
+
 def get_tokenizer(model:str="gpt-4"):
     try:
         encoding = tiktoken.encoding_for_model(model)
@@ -64,3 +69,12 @@ def _truncate_by_chars(text:str, allowed_tokens:int, model:str="gpt-4", suffix:s
 
 
     return text[:low-1] + suffix
+
+
+def _hash_args(args: dict[str, Any]) -> str:
+    """
+    Stable SHA-256 hash of args.
+    Keys are sorted so {"b":1,"a":2} and {"a":2,"b":1} produce the same hash.
+    """
+    canonical = json.dumps(args, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(canonical.encode()).hexdigest()
