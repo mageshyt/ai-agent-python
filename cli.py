@@ -316,6 +316,17 @@ class CLI:
                     self.tui.show_help()
                 elif cmd == "/clear":
                     console.clear()
+                elif cmd.startswith("/stats"):
+                    parts = cmd.split()
+                    if self.agent and self.agent.session:
+                        if len(parts) > 1 and parts[1] in ("messages", "detail"):
+                            details = self.agent.session.get_message_details()
+                            self.tui.show_message_list(details)
+                        else:
+                            stats = self.agent.session.get_stats()
+                            self.tui.show_session_stats(stats)
+                    else:
+                        self.tui.warning("No active session to display stats.")
                 elif cmd == "/mcp":
                     mcp_servers = self.agent.session.mcp_manager.get_all_servers()
                     if mcp_servers:
