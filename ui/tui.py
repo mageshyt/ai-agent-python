@@ -1054,6 +1054,128 @@ class TUI:
 
         self.console.print(table)
 
+    def show_session_stats(self, stats: dict[str, Any]) -> None:
+        """Display comprehensive session statistics"""
+        from datetime import datetime
+        
+        # Header panel
+        header = Panel(
+            Text("SESSION STATISTICS", style="bold #22d3ee"),
+            style="bold #0891b2",
+            expand=False
+        )
+        self.console.print(header)
+        
+        # Session info table
+        session_table = Table(title="Session Overview", show_header=False, box=box.SIMPLE)
+        session_table.add_column(style="bold #67e8f9", width=25)
+        session_table.add_column(style="#cffafe")
+        
+        session_table.add_row("Session ID", stats.get("session_id", "N/A")[:12] + "...")
+        session_table.add_row("Created", stats.get("created_at", "N/A").split("T")[0])
+        session_table.add_row("Turns", str(stats.get("turn_count", 0)))
+        
+        self.console.print(session_table)
+        self.console.print()
+        
+        # Current context window table
+        context_table = Table(title="Current Context Window (sent to model)", show_header=True, header_style="bold #0891b2", box=box.SIMPLE)
+        context_table.add_column("Component", style="bold #67e8f9")
+        context_table.add_column("Tokens", style="#86efac", justify="right")
+        context_table.add_column("% of Window", style="#fbbf24", justify="right")
+        
+        system_tokens = stats.get("system_prompt_tokens", 0)
+        messages_tokens = stats.get("messages_tokens", 0)
+        tools_tokens = stats.get("tools_tokens", 0)
+        current_tokens = stats.get("current_context_tokens", 0)
+        context_window = stats.get("context_window", 128000)
+        pruning_budget = stats.get("pruning_budget", 32000)
+        
+        current_pct = (current_tokens / context_window * 100) if context_window > 0 else 0
+        system_pct = (system_tokens / context_window * 100) if context_window > 0 else 0
+        messages_pct = (messages_tokens / context_window * 100) if context_window > 0 else 0
+        tools_pct = (tools_tokens / context_window * 100) if context_window > 0 else 0
+        
+        context_table.add_row("System Prompt", f"{system_tokens:,}", f"{system_pct:.1f}%")
+        context_table.add_row("Tool Schemas", f"{tools_tokens:,}", f"{tools_pct:.1f}%")
+        context_table.add_row("Messages", f"{messages_tokens:,}", f"{messages_pct:.1f}%")
+        context_table.add_row("[bold]Total Context[/bold]", f"[bold]{current_tokens:,}[/bold]", f"[bold]{current_pct:.1f}%[/bold]")
+        
+        self.console.print(context_table)
+        self.console.print()
+        
+        # API billing usage table
+        api_table = Table(title="API Billing (cumulative across session)", show_header=True, header_style="bold #0891b2", box=box.SIMPLE)
+        api_table.add_column("Metric", style="bold #67e8f9")
+        api_table.add_column("Tokens", style="#cffafe", justify="right")
+        
+        api_prompt = stats.get("api_prompt_tokens", 0)
+        api_completion = stats.get("api_completion_tokens", 0)
+        api_cached = stats.get("api_cached_tokens", 0)
+        api_total = stats.get("total_api_tokens_used", 0)
+        
+        api_table.add_row("Prompt Tokens", f"{api_prompt:,}")
+        api_table.add_row("Completion Tokens", f"{api_completion:,}")
+        api_table.add_row("Cached Tokens", f"{api_cached:,}")
+        api_table.add_row("[bold]Total Billed[/bold]", f"[bold]{api_total:,}[/bold]")
+        
+        self.console.print(api_table)
+        self.console.print()
+        
+        # Context management stats
+        management_table = Table(title="Context Management", show_header=True, header_style="bold #0891b2", box=box.SIMPLE)
+        management_table.add_column("Metric", style="bold #67e8f9")
+        management_table.add_column("Value", style="#cffafe")
+        
+        current_messages = stats.get("current_messages", 0)
+        pruning_events = stats.get("pruning_events", 0)
+        messages_pruned = stats.get("messages_pruned", 0)
+        compaction_events = stats.get("compaction_events", 0)
+        
+        management_table.add_row("Current Messages", str(current_messages))
+        management_table.add_row("Pruning Events", str(pruning_events))
+        management_table.add_row("Messages Pruned", str(messages_pruned))
+        management_table.add_row("Compaction Events", str(compaction_events))
+        management_table.add_row("Pruning Budget", f"{pruning_budget:,} tokens")
+        management_table.add_row("Model Window", f"{context_window:,} tokens")
+        
+        self.console.print(management_table)
+        self.console.print()
+        
+        # Status indicator
+        if current_pct >= 90:
+            status_text = Text("⚠  Context window is nearly full (>90%)", style="bold #f87171")
+        elif current_pct >= 70:
+            status_text = Text("⚡ Context window approaching limit (70-90%)", style="bold #fbbf24")
+        elif compaction_events > 0:
+            status_text = Text("✓ Context compaction active, memory optimized", style="bold #86efac")
+        else:
+            status_text = Text("✓ Plenty of context available", style="bold #86efac")
+        
+        self.console.print(status_text)
+
+    def show_message_list(self, details: list[dict]) -> None:
+        """Display a paged list of stored messages with token counts and preview."""
+        table = Table(title="Stored Messages", show_header=True, header_style="bold #0891b2", box=box.SIMPLE)
+        table.add_column("#", style="bold #67e8f9", width=4)
+        table.add_column("Role", style="#cffafe", width=10)
+        table.add_column("Tokens", style="#86efac", justify="right", width=10)
+        table.add_column("Preview", style="#cffafe")
+
+        if not details:
+            self.console.print("No stored messages.")
+            return
+
+        for item in details:
+            idx = str(item.get("index", "?"))
+            role = item.get("role", "unknown")
+            tokens = str(item.get("token_count", "—"))
+            preview = item.get("preview", "")
+            table.add_row(idx, role, tokens, preview)
+
+        self.console.print(table)
+
+
     def show_help(self) -> None:
         help_text = """\
 ## Commands
