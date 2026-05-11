@@ -69,11 +69,52 @@ class ContextManager:
 
     def get_context(self) -> list[dict[str, Any]]:
         context = [{"role": "system", "content": self.system_prompts}]
-        for message in self._messages:
+        
+        system_tokens = count_tokens(self.system_prompts, model=self._model)
+        max_allowed_tokens = self._config.model.context_window * 0.9  # Use 90% of context window
+        
+        if system_tokens > max_allowed_tokens:
+            from lib.text import truncate_by_tokens
+            truncated_system = truncate_by_tokens(self.system_prompts, max_allowed_tokens, model=self._model)
+            context = [{"role": "system", "content": truncated_system}]
+            system_tokens = count_tokens(truncated_system, model=self._model)
+        
+        available_tokens = max_allowed_tokens - system_tokens
+        
+        selected_messages = []
+        current_tokens = 0
+        
+        for message in reversed(self._messages):
+            message_tokens = message.token_count if message.token_count is not None else count_tokens(message.content, model=self._model)
+            
+            if current_tokens + message_tokens > available_tokens:
+                break
+                
+            selected_messages.append(message)
+            current_tokens += message_tokens
+        
+        selected_messages.reverse()
+        
+        for message in selected_messages:
             context.append(message.to_dict())
+        
         return context
 
     def add_tool_result(self, tool_call_id : str , content:str) -> None:
+        max_output_tokens = self._config.max_tool_output_tokens
+        
+        if max_output_tokens > 0:
+            content_tokens = count_tokens(content, model=self._model)
+            if content_tokens > max_output_tokens:
+                from lib.text import truncate_text_by_tokens
+                content = truncate_text_by_tokens(
+                    content,
+                    max_output_tokens,
+                    model=self._model,
+                    suffix=f"\n\n[Tool output truncated from {content_tokens} to {max_output_tokens} tokens]",
+                    preserve_lines=True
+                )
+        
         item= MessageItem(
                 role="tool",
                 content=content,
@@ -140,9 +181,16 @@ class ContextManager:
     
     def is_need_to_reset(self) -> bool:
         context_limit = self._config.model.context_window
-        current_tokens = self._total_usage.total_tokens
 
-        return current_tokens >= (context_limit * CONTEXT_RESET_SIZE)  # reset when reaching 90% of context limit
+        # compute token count of currently stored messages (fall back to counting)
+        total_tokens = 0
+        for m in self._messages:
+            if getattr(m, "token_count", None) is not None:
+                total_tokens += m.token_count or 0
+            else:
+                total_tokens += count_tokens(m.content, model=self._model)
+
+        return total_tokens >= (context_limit * CONTEXT_RESET_SIZE)
 
     def get_latest_usage(self) -> TokenUsage:
         return self._latest_usage

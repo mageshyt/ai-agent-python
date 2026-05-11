@@ -54,23 +54,34 @@ class Agent:
 
         for _ in range(max_turns):
             self.session.increment_turn()
-            response_text = ""
-            usage : TokenUsage | None = None
+            response_text = ""            # First attempt lightweight pruning to avoid expensive LLM compaction.
+            # If pruning brings the stored message tokens under the configured
+            # window, we can skip compaction.
+            try:
+                if self.session.prune_manager.should_prune(self.session.context_manager):
+                    removed = self.session.prune_manager.prune(self.session.context_manager)
+                    if removed > 0:
+                        self.session.record_prune_event(removed)
+                    # small observability event could be added here if desired
 
-            if self.session.context_manager.is_need_to_reset():
-                yield AgentEvent(type=AgentEventType.COMPACTION_STARTED, data={"agent_name": self.session.agentId})
-                compaction_succeeded = False
-                try:
-                    summary, summary_usage = await self.session.chat_compactor.compress(self.session.context_manager)
-                    print("Compaction summary:", summary, "Usage:", summary_usage.__dict__ if summary_usage else None)
-                    if summary and summary_usage:
-                        self.session.context_manager.replace_chat_session(summary)
-                        yield AgentEvent(type=AgentEventType.COMPACTION_FINISHED, data={"agent_name": self.session.agentId, "summary": summary, "usage": summary_usage.__dict__})
-                        compaction_succeeded = True
-                    # else:
-                    #     yield AgentEvent(type=AgentEventType.COMPACTION_FAILED, data={"agent_name": self.session.agentId, "reason": "Empty summary or usage"})
-                except Exception as e:
-                    yield AgentEvent(type=AgentEventType.COMPACTION_FAILED, data={"agent_name": self.session.agentId, "reason": str(e)})
+                # If still over budget (prune didn't free enough), run compaction.
+                if self.session.prune_manager.should_prune(self.session.context_manager) or self.session.context_manager.is_need_to_reset():
+                    yield AgentEvent(type=AgentEventType.COMPACTION_STARTED, data={"agent_name": self.session.agentId})
+                    compaction_succeeded = False
+                    try:
+                        summary, summary_usage = await self.session.chat_compactor.compress(self.session.context_manager)
+                        print("Compaction summary:", summary, "Usage:", summary_usage.__dict__ if summary_usage else None)
+                        if summary and summary_usage:
+                            self.session.context_manager.replace_chat_session(summary)
+                            self.session.record_compaction_event()
+                            yield AgentEvent(type=AgentEventType.COMPACTION_FINISHED, data={"agent_name": self.session.agentId, "summary": summary, "usage": summary_usage.__dict__})
+                            compaction_succeeded = True
+                        # else:
+                        #     yield AgentEvent(type=AgentEventType.COMPACTION_FAILED, data={"agent_name": self.session.agentId, "reason": "Empty summary or usage"})
+                    except Exception as e:
+                        yield AgentEvent(type=AgentEventType.COMPACTION_FAILED, data={"agent_name": self.session.agentId, "reason": str(e)})
+            except Exception as e:
+                yield AgentEvent.agent_error(agent_name=self.session.agentId, message=f"Prune/compaction error: {e}")
 
                 # if not compaction_succeeded and self.session.context_manager.is_need_to_reset():
                 #     yield AgentEvent.agent_error(
@@ -115,10 +126,13 @@ class Agent:
                 # if there are no tool calls, we can end the agentic loop and return the final response
                 if usage:
                     self.session.context_manager.add_usage(usage)
+                    self.session.record_usage(usage.prompt_tokens, usage.completion_tokens)
 
                 if self.session.prune_manager.should_prune(self.session.context_manager):
                     # TODO: we can consider yielding an event here to indicate pruning is happening, and include details about what was pruned for better observability
-                    self.session.prune_manager.prune(self.session.context_manager)
+                    removed = self.session.prune_manager.prune(self.session.context_manager)
+                    if removed > 0:
+                        self.session.record_prune_event(removed)
 
                 break
             for tool_call in tool_calls:
@@ -166,9 +180,12 @@ class Agent:
 
             if usage:
                 self.session.context_manager.add_usage(usage)
+                self.session.record_usage(usage.prompt_tokens, usage.completion_tokens)
 
             if self.session.prune_manager.should_prune(self.session.context_manager):
-                self.session.prune_manager.prune(self.session.context_manager)
+                removed = self.session.prune_manager.prune(self.session.context_manager)
+                if removed > 0:
+                    self.session.record_prune_event(removed)
             if batch_failed_calls > 0:
                 consecutive_tool_failures += batch_failed_calls
             else:
